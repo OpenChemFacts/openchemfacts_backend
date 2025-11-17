@@ -138,7 +138,7 @@ git push scalingo main
 
 Scalingo détectera automatiquement :
 - Le `Procfile` pour démarrer l'application
-- Le `runtime.txt` pour la version Python
+- Le `.python-version` pour la version Python
 - Le `requirements.txt` pour installer les dépendances
 
 ### 8. Vérification du déploiement
@@ -171,7 +171,7 @@ backend/
 │   ├── plotting_functions.py           # Fonctions de visualisation
 │   └── results_ecotox_*.parquet       # Données d'écotoxicologie
 ├── Procfile             # Configuration Scalingo
-├── runtime.txt          # Version Python
+├── .python-version      # Version Python (majeure uniquement)
 ├── requirements.txt     # Dépendances Python
 ├── .gitignore          # Fichiers ignorés par Git
 └── README.md           # Ce fichier
@@ -190,10 +190,12 @@ backend/
   web: uvicorn app.main:app --host 0.0.0.0 --port 8080
   ```
 
-- `runtime.txt` : Version Python à utiliser
+- `.python-version` : Version Python majeure à utiliser (Scalingo utilisera automatiquement la dernière version patch)
   ```
-  python-3.11.9
+  3.11
   ```
+  
+  Note : Ne spécifiez que la version majeure (ex: 3.11) pour recevoir automatiquement les mises à jour de sécurité.
 
 ## Dépannage
 
