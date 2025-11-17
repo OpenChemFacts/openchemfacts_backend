@@ -180,8 +180,8 @@ backend/
 ## Variables d'environnement
 
 - `ALLOWED_ORIGINS` : Origines autorisées pour CORS (séparées par des virgules)
-  - Par défaut : `https://openchemfacts.com`
-  - Exemple : `https://openchemfacts.com,https://www.openchemfacts.com`
+  - Par défaut : `https://openchemfacts.com,https://openchemfacts.lovable.app`
+  - Exemple : `https://openchemfacts.com,https://openchemfacts.lovable.app,https://www.openchemfacts.com`
 
 ## Fichiers de configuration Scalingo
 

@@ -19,12 +19,16 @@ logger.info("Starting OpenChemFacts API")
 logger.info(f"Python version: {sys.version}")
 
 # Configuration CORS pour permettre les appels depuis le frontend
-# En production, restreint à https://openchemfacts.com
+# Par défaut, autorise https://openchemfacts.com et https://openchemfacts.lovable.app
 # Peut être configuré via la variable d'environnement ALLOWED_ORIGINS
-allowed_origins = os.getenv(
+# (séparer les origines par des virgules)
+allowed_origins_str = os.getenv(
     "ALLOWED_ORIGINS",
-    "https://openchemfacts.com"
-).split(",")
+    "https://openchemfacts.com,https://openchemfacts.lovable.app"
+)
+allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
+
+logger.info(f"CORS allowed origins: {allowed_origins}")
 
 app.add_middleware(
     CORSMiddleware,
