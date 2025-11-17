@@ -19,20 +19,25 @@ logger.info("Starting OpenChemFacts API")
 logger.info(f"Python version: {sys.version}")
 
 # Configuration CORS pour permettre les appels depuis le frontend
-# Par défaut, autorise https://openchemfacts.com et https://openchemfacts.lovable.app
+# Par défaut, autorise https://openchemfacts.com, https://openchemfacts.lovable.app et les domaines Lovable
 # Peut être configuré via la variable d'environnement ALLOWED_ORIGINS
 # (séparer les origines par des virgules)
+# Pour les sous-domaines Lovable, on utilise allow_origin_regex
 allowed_origins_str = os.getenv(
     "ALLOWED_ORIGINS",
-    "https://openchemfacts.com,https://openchemfacts.lovable.app"
+    "https://openchemfacts.com,https://openchemfacts.lovable.app,https://lovableproject.com"
 )
 allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
+
+# Regex pour autoriser tous les sous-domaines de lovableproject.com
+lovable_regex = r"https://.*\.lovableproject\.com"
 
 logger.info(f"CORS allowed origins: {allowed_origins}")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=lovable_regex,  # Autorise tous les sous-domaines de lovableproject.com
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
