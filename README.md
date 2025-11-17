@@ -39,12 +39,62 @@ pip install -r requirements.txt
 ls data/results_ecotox_*.parquet
 ```
 
-5. Lancer l'application :
+## Démarrage du serveur local
+
+### Méthode 1 : Script automatique (recommandé)
+
+**Sur Linux/macOS :**
 ```bash
-uvicorn app.main:app --reload
+chmod +x start_local.sh
+./start_local.sh
 ```
 
-L'API sera accessible sur `http://localhost:8000`
+**Sur Windows :**
+```batch
+start_local.bat
+```
+
+Le script vérifie automatiquement :
+- ✅ La présence de Python
+- ✅ L'existence de l'environnement virtuel (le crée si nécessaire)
+- ✅ L'installation des dépendances (les installe si nécessaire)
+- ✅ La présence du fichier de données
+
+Le serveur démarre sur `http://localhost:8000` avec rechargement automatique.
+
+### Méthode 2 : Commande manuelle
+
+```bash
+# Activer l'environnement virtuel
+source venv/bin/activate  # Sur Windows: venv\Scripts\activate
+
+# Démarrer le serveur
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### Vérifier que le serveur est démarré
+
+**Avec le script de vérification :**
+
+**Sur Linux/macOS :**
+```bash
+chmod +x check_server.sh
+./check_server.sh
+```
+
+**Sur Windows :**
+```batch
+check_server.bat
+```
+
+**Manuellement :**
+- Ouvrir dans votre navigateur : `http://localhost:8000/health`
+- Vous devriez voir : `{"status": "ok"}`
+- Documentation interactive : `http://localhost:8000/docs`
+
+### Arrêter le serveur
+
+Appuyez sur `Ctrl+C` dans le terminal où le serveur est lancé.
 
 ## Endpoints disponibles
 
@@ -76,6 +126,15 @@ Une fois l'API lancée, accédez à :
 - Documentation ReDoc : `http://localhost:8000/redoc`
 
 ## Déploiement sur Scalingo
+
+### Vue d'ensemble
+
+Le déploiement sur Scalingo se fait via Git. Quand vous poussez votre code sur le remote `scalingo`, Scalingo :
+1. Détecte automatiquement le `Procfile` pour démarrer l'application
+2. Installe les dépendances depuis `requirements.txt`
+3. Démarre l'application avec uvicorn
+
+**Important :** Le serveur distant démarre automatiquement après chaque `git push scalingo main`. Vous n'avez pas besoin de le démarrer manuellement.
 
 ### 1. Préparation
 
@@ -132,7 +191,14 @@ Par défaut, l'API est configurée pour accepter les requêtes depuis `https://o
 
 ### 7. Déploiement
 
+**Premier déploiement :**
 ```bash
+git push scalingo main
+```
+
+**Déploiements suivants :**
+```bash
+# Après avoir fait des modifications et commité
 git push scalingo main
 ```
 
@@ -141,15 +207,57 @@ Scalingo détectera automatiquement :
 - Le `.python-version` pour la version Python
 - Le `requirements.txt` pour installer les dépendances
 
+**Le serveur démarre automatiquement** après le déploiement. Vous n'avez rien à faire de plus.
+
 ### 8. Vérification du déploiement
 
+**Vérifier l'état de l'application :**
 ```bash
-# Voir les logs
-scalingo logs
-
-# Vérifier l'état
 scalingo status
 ```
+
+**Voir les logs en temps réel :**
+```bash
+scalingo logs
+```
+
+**Voir les logs d'un déploiement spécifique :**
+```bash
+scalingo logs --deployment <deployment-id>
+```
+
+**Tester l'API déployée :**
+```bash
+# Récupérer l'URL de l'application
+scalingo open
+
+# Ou tester manuellement
+curl https://votre-app.scalingo.io/health
+```
+
+**Redémarrer l'application (si nécessaire) :**
+```bash
+scalingo restart
+```
+
+### Scripts de déploiement automatique
+
+**Sur Linux/macOS :**
+```bash
+chmod +x deploy_scalingo.sh
+./deploy_scalingo.sh
+```
+
+**Sur Windows :**
+```batch
+deploy_scalingo.bat
+```
+
+Ces scripts configurent automatiquement :
+- La connexion à Scalingo
+- La création du projet (si nécessaire)
+- La liaison du dépôt Git
+- Les variables d'environnement
 
 ### 9. Configuration d'un domaine personnalisé (optionnel)
 
@@ -199,11 +307,65 @@ backend/
 
 ## Dépannage
 
+### Le serveur local ne démarre pas
+
+1. **Vérifier que Python est installé :**
+   ```bash
+   python --version  # Doit être 3.11 ou supérieur
+   ```
+
+2. **Vérifier que l'environnement virtuel est activé :**
+   ```bash
+   which python  # Doit pointer vers venv/bin/python
+   ```
+
+3. **Réinstaller les dépendances :**
+   ```bash
+   pip install -r requirements.txt --force-reinstall
+   ```
+
+4. **Vérifier que le port 8000 n'est pas déjà utilisé :**
+   ```bash
+   # Sur Linux/macOS
+   lsof -i :8000
+   
+   # Sur Windows
+   netstat -ano | findstr :8000
+   ```
+   Si le port est occupé, utilisez un autre port :
+   ```bash
+   uvicorn app.main:app --port 8001 --reload
+   ```
+
+5. **Vérifier que le fichier de données existe :**
+   ```bash
+   ls data/results_ecotox_*.parquet
+   ```
+
 ### L'application ne démarre pas sur Scalingo
 
-1. Vérifier les logs : `scalingo logs`
-2. Vérifier que le fichier parquet est bien dans Git
-3. Vérifier que toutes les dépendances sont dans `requirements.txt`
+1. **Vérifier les logs :**
+   ```bash
+   scalingo logs --lines 100
+   ```
+
+2. **Vérifier que le fichier parquet est bien dans Git :**
+   ```bash
+   git ls-files data/results_ecotox_*.parquet
+   ```
+
+3. **Vérifier que toutes les dépendances sont dans `requirements.txt`**
+
+4. **Vérifier la configuration du Procfile :**
+   ```bash
+   cat Procfile
+   ```
+   Doit contenir : `web: uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+
+5. **Vérifier les variables d'environnement :**
+   ```bash
+   scalingo env
+   ```
 
 ### Erreur CORS
 
