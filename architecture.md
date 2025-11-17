@@ -37,7 +37,7 @@ graph TB
 ## Utilisation Frontend
 
 ### CORS
-- Origines: `ALLOWED_ORIGINS` (défaut: `https://openchemfacts.com,https://openchemfacts.lovable.app`)
+- Origines: `ALLOWED_ORIGINS` (défaut: `https://openchemfacts.com,https://openchemfacts.lovable.app,http://localhost:5173"https://bc0fb7ab-da1c-46a7-a7c8-ed95175e1b2b.lovableproject.com`)
 - Méthodes/Headers: Tous autorisés
 
 ### Affichage des graphiques Plotly
