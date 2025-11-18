@@ -828,7 +828,7 @@ def plot_ssd_comparison(
         height=config.plot_height,
         margin=dict(
             t=config.margin_top,
-            b=config.margin_bottom + 40,  # Extra space for bottom legend
+            b=config.margin_bottom + 60,  # Extra space for bottom legend
             l=config.margin_left,
             r=config.margin_right,
         ),

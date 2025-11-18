@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List
 from .data_loader import load_data, load_data_polars
@@ -27,6 +27,79 @@ router = APIRouter()
 class ComparisonRequest(BaseModel):
     """Request model for SSD comparison endpoint."""
     cas_list: List[str]
+
+
+def resolve_cas_from_identifier(identifier: str) -> str:
+    """
+    Resolve a CAS number or chemical name to a CAS number.
+    
+    Args:
+        identifier: CAS number or chemical name (case-insensitive, partial match supported)
+        
+    Returns:
+        CAS number as string
+        
+    Raises:
+        ValueError: If no matching substance is found or multiple matches found
+    """
+    df = load_data()
+    
+    # Normalize identifier (strip whitespace, case-insensitive)
+    identifier_clean = identifier.strip()
+    
+    # First, try exact CAS match
+    cas_exact = df[df["cas_number"] == identifier_clean]
+    if not cas_exact.empty:
+        return identifier_clean
+    
+    # Try exact name match (case-insensitive)
+    name_exact = df[df["chemical_name"].str.lower() == identifier_clean.lower()]
+    if not name_exact.empty:
+        cas_numbers = name_exact["cas_number"].unique()
+        if len(cas_numbers) == 1:
+            return str(cas_numbers[0])
+        else:
+            raise ValueError(
+                f"Multiple CAS numbers found for name '{identifier}': {list(cas_numbers)}. "
+                f"Please use a CAS number instead."
+            )
+    
+    # Try partial name match (case-insensitive)
+    name_partial = df[df["chemical_name"].str.lower().str.contains(identifier_clean.lower(), na=False)]
+    if not name_partial.empty:
+        cas_numbers = name_partial["cas_number"].unique()
+        if len(cas_numbers) == 1:
+            return str(cas_numbers[0])
+        else:
+            # Return multiple matches for user to choose
+            matches = name_partial[["cas_number", "chemical_name"]].drop_duplicates()
+            matches_list = [
+                {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
+                for _, row in matches.iterrows()
+            ]
+            raise ValueError(
+                f"Multiple substances found matching '{identifier}': {matches_list}. "
+                f"Please be more specific or use a CAS number."
+            )
+    
+    # Try partial CAS match
+    cas_partial = df[df["cas_number"].str.contains(identifier_clean, na=False)]
+    if not cas_partial.empty:
+        cas_numbers = cas_partial["cas_number"].unique()
+        if len(cas_numbers) == 1:
+            return str(cas_numbers[0])
+        else:
+            matches = cas_partial[["cas_number", "chemical_name"]].drop_duplicates()
+            matches_list = [
+                {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
+                for _, row in matches.iterrows()
+            ]
+            raise ValueError(
+                f"Multiple CAS numbers found matching '{identifier}': {matches_list}. "
+                f"Please use the full CAS number."
+            )
+    
+    raise ValueError(f"No substance found matching '{identifier}'. Please check the CAS number or name.")
 
 
 @router.get("/summary")
@@ -80,13 +153,102 @@ def get_cas_list():
     }
 
 
-@router.get("/plot/ssd/{cas}")
-def get_ssd_plot(cas: str):
+@router.get("/search")
+def search_substances(
+    query: str = Query(..., description="Search term (CAS number or chemical name, partial match supported)"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of results to return")
+):
+    """
+    Search for substances by CAS number or chemical name.
+    
+    Supports:
+    - Exact CAS number match
+    - Exact chemical name match (case-insensitive)
+    - Partial name match (case-insensitive)
+    - Partial CAS match
+    
+    Args:
+        query: Search term (CAS number or chemical name)
+        limit: Maximum number of results (default: 20, max: 100)
+        
+    Returns:
+        Dictionary with matching substances (CAS number and chemical name)
+    """
+    df = load_data()
+    
+    query_clean = query.strip()
+    
+    # Try exact CAS match first
+    cas_exact = df[df["cas_number"] == query_clean]
+    if not cas_exact.empty:
+        results = cas_exact[["cas_number", "chemical_name"]].drop_duplicates()
+        matches = [
+            {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
+            for _, row in results.iterrows()
+        ]
+        return {
+            "query": query,
+            "count": len(matches),
+            "matches": matches[:limit],
+        }
+    
+    # Try exact name match (case-insensitive)
+    name_exact = df[df["chemical_name"].str.lower() == query_clean.lower()]
+    if not name_exact.empty:
+        results = name_exact[["cas_number", "chemical_name"]].drop_duplicates()
+        matches = [
+            {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
+            for _, row in results.iterrows()
+        ]
+        return {
+            "query": query,
+            "count": len(matches),
+            "matches": matches[:limit],
+        }
+    
+    # Try partial name match (case-insensitive)
+    name_partial = df[df["chemical_name"].str.lower().str.contains(query_clean.lower(), na=False)]
+    if not name_partial.empty:
+        results = name_partial[["cas_number", "chemical_name"]].drop_duplicates()
+        matches = [
+            {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
+            for _, row in results.iterrows()
+        ]
+        return {
+            "query": query,
+            "count": len(matches),
+            "matches": matches[:limit],
+        }
+    
+    # Try partial CAS match
+    cas_partial = df[df["cas_number"].str.contains(query_clean, na=False)]
+    if not cas_partial.empty:
+        results = cas_partial[["cas_number", "chemical_name"]].drop_duplicates()
+        matches = [
+            {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
+            for _, row in results.iterrows()
+        ]
+        return {
+            "query": query,
+            "count": len(matches),
+            "matches": matches[:limit],
+        }
+    
+    # No matches found
+    return {
+        "query": query,
+        "count": 0,
+        "matches": [],
+    }
+
+
+@router.get("/plot/ssd/{identifier}")
+def get_ssd_plot(identifier: str):
     """
     Generate SSD (Species Sensitivity Distribution) and HC20 plot for a single chemical.
     
     Args:
-        cas: CAS number of the chemical
+        identifier: CAS number or chemical name (case-insensitive, partial match supported)
         
     Returns:
         JSON representation of the Plotly figure
@@ -98,6 +260,9 @@ def get_ssd_plot(cas: str):
         )
     
     try:
+        # Resolve identifier to CAS number
+        cas = resolve_cas_from_identifier(identifier)
+        
         df_params = load_data_polars()
         fig = plot_ssd_global(df_params, cas)
         return fig.to_dict()
@@ -107,13 +272,13 @@ def get_ssd_plot(cas: str):
         raise HTTPException(status_code=500, detail=f"Error generating plot: {str(e)}")
 
 
-@router.get("/plot/ec10eq/{cas}")
-def get_ec10eq_plot(cas: str):
+@router.get("/plot/ec10eq/{identifier}")
+def get_ec10eq_plot(identifier: str):
     """
     Generate EC10eq results plot organized by taxa and species.
     
     Args:
-        cas: CAS number of the chemical
+        identifier: CAS number or chemical name (case-insensitive, partial match supported)
         
     Returns:
         JSON representation of the Plotly figure
@@ -125,6 +290,9 @@ def get_ec10eq_plot(cas: str):
         )
     
     try:
+        # Resolve identifier to CAS number
+        cas = resolve_cas_from_identifier(identifier)
+        
         df_params = load_data_polars()
         fig = plot_ec10eq_by_taxa_and_species(df_params, cas)
         return fig.to_dict()
@@ -140,7 +308,8 @@ def get_ssd_comparison(request: ComparisonRequest):
     Create a comparison plot with multiple SSD curves superposed.
     
     Args:
-        request: Request body containing a list of CAS numbers (maximum 3)
+        request: Request body containing a list of CAS numbers or chemical names (maximum 3)
+                Each identifier can be a CAS number or chemical name (case-insensitive, partial match supported)
         
     Returns:
         JSON representation of the Plotly figure
@@ -152,7 +321,7 @@ def get_ssd_comparison(request: ComparisonRequest):
         )
     
     if len(request.cas_list) == 0:
-        raise HTTPException(status_code=400, detail="At least one CAS number must be provided")
+        raise HTTPException(status_code=400, detail="At least one CAS number or chemical name must be provided")
     
     if len(request.cas_list) > 3:
         raise HTTPException(
@@ -161,8 +330,14 @@ def get_ssd_comparison(request: ComparisonRequest):
         )
     
     try:
+        # Resolve all identifiers to CAS numbers
+        resolved_cas_list = []
+        for identifier in request.cas_list:
+            cas = resolve_cas_from_identifier(identifier)
+            resolved_cas_list.append(cas)
+        
         df_params = load_data_polars()
-        fig = plot_ssd_comparison(df_params, request.cas_list)
+        fig = plot_ssd_comparison(df_params, resolved_cas_list)
         return fig.to_dict()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

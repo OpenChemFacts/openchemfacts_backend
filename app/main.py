@@ -58,8 +58,9 @@ def root():
             "redoc": "/redoc",
             "api_summary": "/api/summary",
             "api_cas_list": "/api/cas/list",
-            "api_plot_ssd": "/api/plot/ssd/{cas}",
-            "api_plot_ec10eq": "/api/plot/ec10eq/{cas}",
+            "api_search": "/api/search?query={query}&limit={limit}",
+            "api_plot_ssd": "/api/plot/ssd/{identifier}",
+            "api_plot_ec10eq": "/api/plot/ec10eq/{identifier}",
             "api_plot_comparison": "/api/plot/ssd/comparison"
         }
     }
