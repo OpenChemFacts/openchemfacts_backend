@@ -209,33 +209,145 @@ Scalingo détectera automatiquement :
 
 **Le serveur démarre automatiquement** après le déploiement. Vous n'avez rien à faire de plus.
 
-### 8. Vérification du déploiement
+### 8. Vérification du déploiement et monitoring
 
-**Vérifier l'état de l'application :**
+#### Vérifier l'état du serveur en production
+
+**Méthode rapide avec script (recommandée) :**
+
+**Sur Windows :**
+```batch
+check_scalingo.bat
+```
+
+**Sur Linux/macOS :**
+```bash
+chmod +x check_scalingo.sh
+./check_scalingo.sh
+```
+
+Ce script vérifie automatiquement :
+- Le statut de l'application
+- Le health check endpoint
+- Les erreurs récentes dans les logs
+- Les métriques de ressources
+
+**Méthode manuelle :**
+
+**1. Vérifier le statut de l'application :**
 ```bash
 scalingo status
 ```
+Affiche l'état actuel (running, stopped, crashed, etc.) et les informations sur les conteneurs.
 
-**Voir les logs en temps réel :**
-```bash
-scalingo logs
-```
-
-**Voir les logs d'un déploiement spécifique :**
-```bash
-scalingo logs --deployment <deployment-id>
-```
-
-**Tester l'API déployée :**
+**2. Tester l'endpoint health check :**
 ```bash
 # Récupérer l'URL de l'application
 scalingo open
 
-# Ou tester manuellement
+# Tester le health check manuellement
 curl https://votre-app.scalingo.io/health
 ```
 
-**Redémarrer l'application (si nécessaire) :**
+Le health check retourne :
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-01-XX...",
+  "data": {
+    "status": "ok",
+    "rows": 12345
+  },
+  "version": "0.1.0"
+}
+```
+
+**3. Voir les logs en temps réel :**
+```bash
+# Logs en temps réel (streaming)
+scalingo logs
+
+# Dernières 100 lignes
+scalingo logs --lines 100
+
+# Filtrer les erreurs
+scalingo logs --filter "@level:error"
+
+# Logs d'un déploiement spécifique
+scalingo logs --deployment <deployment-id>
+```
+
+**4. Vérifier les métriques et ressources :**
+```bash
+# Voir l'utilisation des ressources (CPU, mémoire)
+scalingo stats
+
+# Voir les déploiements récents
+scalingo deployments
+```
+
+**5. Vérifier les variables d'environnement :**
+```bash
+scalingo env
+```
+
+#### Diagnostic en cas de problème (site down)
+
+**Étape 1 : Vérifier l'état de l'application**
+```bash
+scalingo status
+```
+
+**Étape 2 : Consulter les logs récents pour identifier l'erreur**
+```bash
+# Voir les 200 dernières lignes
+scalingo logs --lines 200
+
+# Filtrer uniquement les erreurs
+scalingo logs --lines 200 --filter "@level:error OR error OR exception OR traceback"
+```
+
+**Étape 3 : Vérifier si l'application répond**
+```bash
+# Tester le health check
+curl -v https://votre-app.scalingo.io/health
+
+# Si pas de réponse, vérifier les logs de build
+scalingo logs --type build
+```
+
+**Étape 4 : Redémarrer l'application si nécessaire**
+```bash
+# Redémarrer l'application
+scalingo restart
+
+# Vérifier qu'elle redémarre correctement
+scalingo logs --lines 50
+```
+
+**Étape 5 : Vérifier les déploiements récents**
+```bash
+# Lister les déploiements
+scalingo deployments
+
+# Voir les logs d'un déploiement spécifique
+scalingo logs --deployment <deployment-id>
+```
+
+#### Configuration du redémarrage automatique
+
+Scalingo redémarre automatiquement l'application si :
+- Le processus crash (exit code != 0)
+- Le conteneur s'arrête de manière inattendue
+- Un nouveau déploiement est effectué
+
+**Pour améliorer la résilience, vous pouvez configurer un health check HTTP :**
+
+1. Dans le dashboard Scalingo, allez dans **Settings** > **Healthcheck**
+2. Configurez l'URL : `/health`
+3. Scalingo vérifiera automatiquement que l'application répond et la redémarrera si nécessaire
+
+**Redémarrer manuellement l'application :**
 ```bash
 scalingo restart
 ```
@@ -347,25 +459,70 @@ backend/
 1. **Vérifier les logs :**
    ```bash
    scalingo logs --lines 100
+   scalingo logs --type build  # Logs de build
    ```
 
-2. **Vérifier que le fichier parquet est bien dans Git :**
+2. **Vérifier l'état de l'application :**
+   ```bash
+   scalingo status
+   ```
+
+3. **Vérifier que le fichier parquet est bien dans Git :**
    ```bash
    git ls-files data/results_ecotox_*.parquet
    ```
 
-3. **Vérifier que toutes les dépendances sont dans `requirements.txt`**
+4. **Vérifier que toutes les dépendances sont dans `requirements.txt`**
 
-4. **Vérifier la configuration du Procfile :**
+5. **Vérifier la configuration du Procfile :**
    ```bash
    cat Procfile
    ```
    Doit contenir : `web: uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
-5. **Vérifier les variables d'environnement :**
+6. **Vérifier les variables d'environnement :**
    ```bash
    scalingo env
    ```
+
+7. **Tester le health check :**
+   ```bash
+   curl https://votre-app.scalingo.io/health
+   ```
+
+### Le site est down en production
+
+1. **Vérifier l'état immédiatement :**
+   ```bash
+   scalingo status
+   ```
+
+2. **Consulter les logs d'erreur :**
+   ```bash
+   scalingo logs --lines 200 --filter "error OR exception OR traceback"
+   ```
+
+3. **Vérifier les métriques (CPU, mémoire) :**
+   ```bash
+   scalingo stats
+   ```
+   Si la mémoire est saturée, l'application peut crasher.
+
+4. **Redémarrer l'application :**
+   ```bash
+   scalingo restart
+   ```
+
+5. **Vérifier les déploiements récents :**
+   ```bash
+   scalingo deployments
+   ```
+   Un déploiement récent peut avoir causé le problème.
+
+6. **Configurer un health check HTTP dans Scalingo** (recommandé) :
+   - Dashboard Scalingo > Settings > Healthcheck
+   - URL : `/health`
+   - Cela permettra à Scalingo de redémarrer automatiquement l'application si elle ne répond plus
 
 ### Erreur CORS
 

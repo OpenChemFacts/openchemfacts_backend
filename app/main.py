@@ -67,5 +67,25 @@ def root():
 
 @app.get("/health")
 def health():
-    """Health check endpoint."""
-    return {"status": "ok"}
+    """Health check endpoint pour vérifier l'état de l'API."""
+    from datetime import datetime
+    
+    try:
+        # Vérifier que les données peuvent être chargées
+        from .data_loader import load_data
+        df = load_data()
+        data_status = "ok"
+        data_rows = len(df)
+    except Exception as e:
+        data_status = f"error: {str(e)}"
+        data_rows = 0
+    
+    return {
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "data": {
+            "status": data_status,
+            "rows": data_rows
+        },
+        "version": "0.1.0"
+    }
