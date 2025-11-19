@@ -1,3 +1,10 @@
+"""
+API routes for OpenChemFacts Backend.
+
+This module defines all the API endpoints including:
+- Data access endpoints (summary, search, CAS list)
+- Visualization endpoints (SSD plots, EC10eq plots, comparisons)
+"""
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List
@@ -6,9 +13,13 @@ import sys
 from pathlib import Path
 
 # Ajouter le dossier data au path pour importer plotting_functions
+# Cela permet d'importer les fonctions de visualisation depuis data/plotting_functions.py
 data_dir = Path(__file__).resolve().parent.parent / "data"
 sys.path.insert(0, str(data_dir.parent))
 
+# Importer les fonctions de visualisation
+# Si l'import échoue (par exemple si les dépendances ne sont pas installées),
+# on définit les fonctions à None pour gérer l'erreur gracieusement
 try:
     from data.plotting_functions import (
         plot_ssd_global,
@@ -21,11 +32,18 @@ except ImportError:
     plot_ec10eq_by_taxa_and_species = None
     plot_ssd_comparison = None
 
+# Créer le routeur API
+# Toutes les routes définies ici seront préfixées par /api (défini dans main.py)
 router = APIRouter()
 
 
 class ComparisonRequest(BaseModel):
-    """Request model for SSD comparison endpoint."""
+    """
+    Request model for SSD comparison endpoint.
+    
+    Attributes:
+        cas_list: List of CAS numbers or chemical names to compare (maximum 3)
+    """
     cas_list: List[str]
 
 
@@ -104,13 +122,25 @@ def resolve_cas_from_identifier(identifier: str) -> str:
 
 @router.get("/summary")
 def get_summary():
+    """
+    Get a summary of the available data.
+    
+    Returns:
+        Dictionary containing:
+        - rows: Total number of data rows
+        - columns: Total number of columns
+        - columns_names: List of all column names
+        
+    Raises:
+        HTTPException: 404 if no data is available
+    """
     df = load_data()
 
-    # Exemple : retour d'un tableau de stats globales
+    # Vérifier que les données existent
     if df.empty:
         raise HTTPException(status_code=404, detail="Aucune donnée")
 
-    # Exemple minimal : nombre de lignes et colonnes
+    # Retourner les statistiques de base
     return {
         "rows": int(df.shape[0]),
         "columns": int(df.shape[1]),
@@ -120,11 +150,28 @@ def get_summary():
 
 @router.get("/by_column")
 def get_by_column(column: str):
+    """
+    Get unique values for a specific column.
+    
+    Args:
+        column: Name of the column to query
+        
+    Returns:
+        Dictionary containing:
+        - column: Name of the queried column
+        - unique_values: List of unique values in the column
+        - count: Number of unique values
+        
+    Raises:
+        HTTPException: 400 if the column doesn't exist
+    """
     df = load_data()
 
+    # Vérifier que la colonne existe
     if column not in df.columns:
         raise HTTPException(status_code=400, detail="Colonne inconnue")
 
+    # Récupérer les valeurs uniques (sans les valeurs nulles)
     values = df[column].dropna().unique().tolist()
     return {
         "column": column,

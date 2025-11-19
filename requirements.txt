@@ -7,3 +7,5 @@ polars
 numpy
 scipy
 plotly
+pytest
+httpx

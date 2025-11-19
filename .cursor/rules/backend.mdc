@@ -1,0 +1,17 @@
+---
+alwaysApply: true
+---
+General
+- Everything (code, comments, docs, commits) must be in English.
+- Keep the architecture simple and easy to understand.
+- Prefer readability over clever or complex solutions.
+
+Code
+- Follow standard style conventions (PEP8 for Python).
+- Use clear, descriptive names.
+- Keep functions and modules small and focused.
+- Add short docstrings when helpful.
+
+Dependencies
+- Only add dependencies when necessary.
+- Document any required environment variables or external services.
