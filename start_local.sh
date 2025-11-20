@@ -27,7 +27,7 @@ fi
 
 # Activer l'environnement virtuel
 echo "Activation de l'environnement virtuel..."
-source venv/bin/activate
+source venv/Scripts/activate
 
 # Vérifier que les dépendances sont installées
 if ! python -c "import fastapi" 2>/dev/null; then

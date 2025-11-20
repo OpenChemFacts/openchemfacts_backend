@@ -52,6 +52,7 @@ htmlcov/
 # Jupyter
 .ipynb_checkpoints
 
-# Documentation locale (usage personnel uniquement)
+# Local documentation (personal use only)
 Documentation/
+data_pipeline/visualization/Documentation/
 
