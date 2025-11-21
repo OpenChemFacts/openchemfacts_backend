@@ -18,20 +18,38 @@ import pandas as pd
 data_dir = Path(__file__).resolve().parent.parent / "data"
 sys.path.insert(0, str(data_dir.parent))
 
-# Importer les fonctions de visualisation
-# Si l'import échoue (par exemple si les dépendances ne sont pas installées),
-# on définit les fonctions à None pour gérer l'erreur gracieusement
-try:
-    from data.plotting_functions import (
-        plot_ssd_global,
-        plot_ec10eq_by_taxa_and_species,
-        plot_ssd_comparison,
-    )
-except ImportError:
-    # Fallback si l'import échoue
-    plot_ssd_global = None
-    plot_ec10eq_by_taxa_and_species = None
-    plot_ssd_comparison = None
+# Lazy import des fonctions de visualisation pour éviter de charger les dépendances lourdes au démarrage
+# Les fonctions seront importées uniquement quand elles sont nécessaires
+_plotting_functions_loaded = False
+_plot_ssd_global = None
+_plot_ec10eq_by_taxa_and_species = None
+_plot_ssd_comparison = None
+
+
+def _load_plotting_functions():
+    """Charge les fonctions de visualisation de manière paresseuse (lazy loading)."""
+    global _plotting_functions_loaded, _plot_ssd_global, _plot_ec10eq_by_taxa_and_species, _plot_ssd_comparison
+    
+    if _plotting_functions_loaded:
+        return _plot_ssd_global, _plot_ec10eq_by_taxa_and_species, _plot_ssd_comparison
+    
+    try:
+        from data.plotting_functions import (
+            plot_ssd_global,
+            plot_ec10eq_by_taxa_and_species,
+            plot_ssd_comparison,
+        )
+        _plot_ssd_global = plot_ssd_global
+        _plot_ec10eq_by_taxa_and_species = plot_ec10eq_by_taxa_and_species
+        _plot_ssd_comparison = plot_ssd_comparison
+    except ImportError:
+        # Fallback si l'import échoue
+        _plot_ssd_global = None
+        _plot_ec10eq_by_taxa_and_species = None
+        _plot_ssd_comparison = None
+    
+    _plotting_functions_loaded = True
+    return _plot_ssd_global, _plot_ec10eq_by_taxa_and_species, _plot_ssd_comparison
 
 # Créer le routeur API
 # Toutes les routes définies ici seront préfixées par /api (défini dans main.py)
@@ -387,6 +405,7 @@ def get_ssd_plot(
     Returns:
         JSON representation of the Plotly figure
     """
+    plot_ssd_global, _, _ = _load_plotting_functions()
     if plot_ssd_global is None:
         raise HTTPException(
             status_code=503, 
@@ -408,6 +427,7 @@ def get_ssd_plot(
                 config.plot_height = height
         
         df_params = load_data_polars()
+        # Use the loaded function
         fig = plot_ssd_global(df_params, cas, config=config)
         return fig.to_dict()
     except ValueError as e:
@@ -433,6 +453,7 @@ def get_ec10eq_plot(
     Returns:
         JSON representation of the Plotly figure
     """
+    _, plot_ec10eq_by_taxa_and_species, _ = _load_plotting_functions()
     if plot_ec10eq_by_taxa_and_species is None:
         raise HTTPException(
             status_code=503, 
@@ -454,6 +475,7 @@ def get_ec10eq_plot(
                 config.plot_height = height
         
         df_params = load_data_polars()
+        # Use the loaded function
         fig = plot_ec10eq_by_taxa_and_species(df_params, cas, config=config)
         return fig.to_dict()
     except ValueError as e:
@@ -477,6 +499,7 @@ def get_ssd_comparison(request: ComparisonRequest):
     Returns:
         JSON representation of the Plotly figure
     """
+    _, _, plot_ssd_comparison = _load_plotting_functions()
     if plot_ssd_comparison is None:
         raise HTTPException(
             status_code=503, 
@@ -516,6 +539,7 @@ def get_ssd_comparison(request: ComparisonRequest):
                 config.plot_height = request.height
         
         df_params = load_data_polars()
+        # Use the loaded function
         fig = plot_ssd_comparison(df_params, resolved_cas_list, config=config)
         return fig.to_dict()
     except ValueError as e:
