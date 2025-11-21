@@ -11,6 +11,7 @@ from typing import List
 from .data_loader import load_data, load_data_polars, load_benchmark_data
 import sys
 from pathlib import Path
+import pandas as pd
 
 # Ajouter le dossier data au path pour importer plotting_functions
 # Cela permet d'importer les fonctions de visualisation depuis data/plotting_functions.py
@@ -198,6 +199,62 @@ def get_cas_list():
         "cas_numbers": list(cas_list.keys()),
         "cas_with_names": {cas: name for cas, name in cas_list.items()},
     }
+
+
+@router.get("/cas/{cas}")
+def get_cas_data(cas: str):
+    """
+    Get benchmark data for a specific substance identified by CAS number.
+    Returns a single entry (first match) from the benchmark data.
+    
+    Args:
+        cas: CAS number of the substance
+        
+    Returns:
+        Dictionary containing the benchmark data for the substance:
+        - cas_number: CAS number of the substance
+        - name: Chemical name
+        - INCHIKEY: INCHI key
+        - Kingdom: Chemical kingdom
+        - Superclass: Chemical superclass
+        - Class: Chemical class
+        
+    Raises:
+        HTTPException: 404 if the substance is not found
+    """
+    try:
+        # Load benchmark data
+        df_benchmark = load_benchmark_data()
+        
+        # Filter by CAS number
+        substance_data = df_benchmark[df_benchmark["cas_number"] == cas]
+        
+        if substance_data.empty:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Substance with CAS number '{cas}' not found in benchmark data"
+            )
+        
+        # Get the first entry (single substance) and select only required columns
+        # Select only the required fields and convert to dict, handling NaN values
+        required_fields = ["cas_number", "name", "INCHIKEY", "Kingdom", "Superclass", "Class"]
+        selected_data = substance_data[required_fields].iloc[0]
+        
+        # Convert to dict and replace NaN/None values with None for JSON serialization
+        data_record = {}
+        for field in required_fields:
+            value = selected_data[field]
+            # Check if value is NaN using pandas
+            if pd.isna(value):
+                data_record[field] = None
+            else:
+                data_record[field] = value
+        
+        return data_record
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving data: {str(e)}")
 
 
 @router.get("/search")
