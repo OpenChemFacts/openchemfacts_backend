@@ -430,6 +430,7 @@ def get_base_layout_config(config: PlotConfig) -> dict:
     return {
         "width": config.plot_width,
         "height": config.plot_height,
+        "autosize": False,  # Use exact dimensions, don't auto-resize
         "margin": dict(
             t=config.margin_top,
             b=config.margin_bottom,
@@ -601,6 +602,8 @@ def plot_ssd_global(
     add_hc20_annotation(fig, hc20, x_plot_min, x_plot_max, config)
     
     base_layout = get_base_layout_config(config)
+    # Ensure legend doesn't overlap with plot area
+    base_layout["margin"]["r"] = max(base_layout["margin"]["r"], 100)
     fig.update_layout(
         **base_layout,
         title=dict(
@@ -617,7 +620,16 @@ def plot_ssd_global(
         yaxis=dict(range=[0, 100], ticksuffix=" %"),
         xaxis=get_log_xaxis_config(x_plot_min, x_plot_max, tickvals, ticktext),
         template=config.template,
-        legend_title="SSD",
+        legend=dict(
+            title="SSD",
+            orientation="v",
+            yanchor="top",
+            y=1,
+            xanchor="right",
+            x=1,
+            xshift=-10,
+            yshift=-10,
+        ),
         hovermode="closest",
     )
 
@@ -814,7 +826,8 @@ def plot_ssd_comparison(
     
     base_layout = get_base_layout_config(config)
     # Add extra space for bottom legend in comparison plot
-    base_layout["margin"]["b"] += 60
+    # Increased margin to ensure legend doesn't overlap with x-axis
+    base_layout["margin"]["b"] = max(base_layout["margin"]["b"] + 100, 180)
     
     fig.update_layout(
         **base_layout,
@@ -832,9 +845,12 @@ def plot_ssd_comparison(
             title="Substances",
             orientation="h",
             yanchor="bottom",
-            y=-0.15,
+            y=-0.18,
             xanchor="center",
             x=0.5,
+            # Ensure legend is within visible area
+            entrywidthmode="fraction",
+            entrywidth=0.3,
         ),
         hovermode="closest",
     )
