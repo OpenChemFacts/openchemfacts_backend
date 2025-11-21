@@ -397,6 +397,10 @@ def get_ssd_plot(
     """
     Generate SSD (Species Sensitivity Distribution) and HC20 plot for a single chemical.
     
+    The SSD uses pre-calculated parameters (SSD_mu_logEC10eq, SSD_sigma_logEC10eq) when available.
+    When these parameters are 0 (indicating a single value case), the SSD is calculated
+    from the Effect Factor (EF) in PAF.m3.kg from OpenChemFacts.
+    
     Args:
         identifier: CAS number or chemical name (case-insensitive, partial match supported)
         width: Optional plot width in pixels (200-3000, default: 1600)

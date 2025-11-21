@@ -161,32 +161,35 @@ def calculate_data_range(
         Tuple of (min_value, max_value) in real units (PAF.m3.kg)
     """
     config = get_config(config)
+    
+    # Try to use values list first (actual EC10eq values)
     values_list = extract_values_list(sub)
     valid_values = get_valid_values(values_list)
     
     if len(valid_values) > 0:
         return float(valid_values.min()), float(valid_values.max())
-    else:
-        # Fallback to SSD-based range
-        return (
-            10 ** (mu_ssd - 3 * sigma_ssd),
-            10 ** (mu_ssd + 3 * sigma_ssd)
-        )
+    
+    # Fallback to SSD-based range using mu_ssd and sigma_ssd
+    # This works whether mu_ssd comes from pre-calculated parameters or from EF
+    return (
+        10 ** (mu_ssd - 3 * sigma_ssd),
+        10 ** (mu_ssd + 3 * sigma_ssd)
+    )
 
 
 def filter_and_validate_data(df_params: pl.DataFrame, cas: str) -> Tuple[pl.DataFrame, str]:
     """
-    Filter data for the requested CAS and validate SSD parameters.
+    Filter data for the requested CAS and validate SSD parameters or EF data.
     
     Args:
-        df_params: DataFrame with SSD parameters (aggregated at CAS level)
+        df_params: DataFrame with SSD parameters (SSD_mu_logEC10eq, SSD_sigma_logEC10eq) and EF
         cas: CAS number to filter
         
     Returns:
         Tuple of (filtered_dataframe, chemical_name)
         
     Raises:
-        ValueError: If CAS not found or no valid data
+        ValueError: If CAS not found or no valid SSD parameters or EF data
     """
     sub = df_params.filter(pl.col("cas_number") == cas)
     if sub.height == 0:
@@ -194,36 +197,84 @@ def filter_and_validate_data(df_params: pl.DataFrame, cas: str) -> Tuple[pl.Data
     
     chem_name = sub["chemical_name"][0] if "chemical_name" in sub.columns else cas
 
-    # Validate SSD parameters (new structure: SSD_mu_logEC10eq and SSD_sigma_logEC10eq)
-    sub = sub.filter(
-        pl.col("SSD_mu_logEC10eq").is_finite() & pl.col("SSD_mu_logEC10eq").is_not_null()
-        & pl.col("SSD_sigma_logEC10eq").is_finite() & (pl.col("SSD_sigma_logEC10eq") >= 0)
-    )
-    if sub.height == 0:
-        raise ValueError(f"No valid SSD parameters found for CAS {cas}.")
+    # Validate that we have either valid SSD parameters or valid EF
+    # SSD parameters are preferred, but if they are 0 (single value case), use EF
+    has_valid_ssd = False
+    if "SSD_mu_logEC10eq" in sub.columns and "SSD_sigma_logEC10eq" in sub.columns:
+        mu_val = sub["SSD_mu_logEC10eq"][0]
+        sigma_val = sub["SSD_sigma_logEC10eq"][0]
+        if (mu_val is not None and np.isfinite(mu_val) 
+            and sigma_val is not None and np.isfinite(sigma_val) and sigma_val >= 0):
+            has_valid_ssd = True
+    
+    has_valid_ef = False
+    if "EF" in sub.columns:
+        ef_val = sub["EF"][0]
+        if ef_val is not None and np.isfinite(ef_val) and ef_val > 0:
+            has_valid_ef = True
+    
+    if not has_valid_ssd and not has_valid_ef:
+        raise ValueError(f"No valid SSD parameters or EF found for CAS {cas}.")
     
     return sub, chem_name
 
 
 def calculate_ssd_parameters(sub: pl.DataFrame) -> Tuple[float, float]:
     """
-    Extract SSD parameters from aggregated data.
+    Calculate SSD parameters from pre-calculated values or EF (Effect Factor).
+    
+    Priority:
+    1. Use SSD_mu_logEC10eq and SSD_sigma_logEC10eq if available and non-zero
+    2. If parameters are 0 (single value case), calculate from EF in PAF.m3.kg
     
     Args:
-        sub: Filtered dataframe with SSD_mu_logEC10eq and SSD_sigma_logEC10eq
+        sub: Filtered dataframe with SSD parameters and/or EF column
         
     Returns:
-        Tuple of (mu_ssd, sigma_ssd)
+        Tuple of (mu_ssd, sigma_ssd) in log10 space
     """
-    mu_ssd = float(sub["SSD_mu_logEC10eq"][0])
-    sigma_ssd = float(sub["SSD_sigma_logEC10eq"][0])
+    # First, try to use pre-calculated SSD parameters
+    if "SSD_mu_logEC10eq" in sub.columns and "SSD_sigma_logEC10eq" in sub.columns:
+        mu_precalc = float(sub["SSD_mu_logEC10eq"][0])
+        sigma_precalc = float(sub["SSD_sigma_logEC10eq"][0])
+        
+        # Use pre-calculated parameters if they are valid and non-zero
+        # When mu and sigma are 0, it means there's only one value, so use EF instead
+        if (np.isfinite(mu_precalc) and np.isfinite(sigma_precalc) 
+            and sigma_precalc >= 0 and mu_precalc != 0.0):
+            # Valid pre-calculated parameters
+            mu_ssd = mu_precalc
+            sigma_ssd = sigma_precalc
+            
+            # Ensure sigma is valid (minimum value)
+            if sigma_ssd <= 0:
+                sigma_ssd = 0.01  # Minimum value to avoid errors
+            
+            if not (np.isfinite(mu_ssd) and np.isfinite(sigma_ssd) and sigma_ssd > 0):
+                raise ValueError(f"Invalid SSD parameters: mu={mu_ssd}, sigma={sigma_ssd}")
+            
+            return mu_ssd, sigma_ssd
     
-    # Si sigma est 0 ou négatif, utiliser une valeur minimale
-    if sigma_ssd <= 0:
-        sigma_ssd = 0.01  # Valeur minimale pour éviter les erreurs
+    # If parameters are 0 or not available, calculate from EF (single value case)
+    if "EF" not in sub.columns:
+        raise ValueError("No SSD parameters or EF available for calculation.")
+    
+    ef_value = float(sub["EF"][0])
+    
+    if not (np.isfinite(ef_value) and ef_value > 0):
+        raise ValueError(f"Invalid EF value: {ef_value}")
+    
+    # Convert EF to log10 space to get mu_ssd
+    mu_ssd = np.log10(ef_value)
+    
+    # Use default sigma based on typical SSD variability
+    # Typical sigma values for SSD in ecotoxicology range from 0.5 to 1.5
+    # We use 1.0 as a reasonable default (represents ~1 order of magnitude variability)
+    sigma_ssd = 1.0
     
     if not (np.isfinite(mu_ssd) and np.isfinite(sigma_ssd) and sigma_ssd > 0):
         raise ValueError(f"Invalid SSD parameters: mu={mu_ssd}, sigma={sigma_ssd}")
+    
     return mu_ssd, sigma_ssd
 
 
@@ -567,8 +618,12 @@ def plot_ssd_global(
     """
     Generate SSD (Species Sensitivity Distribution) and HC20 plot for a single chemical.
     
+    The SSD uses pre-calculated parameters (SSD_mu_logEC10eq, SSD_sigma_logEC10eq) when available.
+    When these parameters are 0 (indicating a single value case), the SSD is calculated
+    from the Effect Factor (EF) in PAF.m3.kg from OpenChemFacts.
+    
     Args:
-        df_params: DataFrame with aggregated SSD parameters (SSD_mu_logEC10eq, SSD_sigma_logEC10eq)
+        df_params: DataFrame with SSD parameters and/or EF (Effect Factor) column in PAF.m3.kg
         cas: CAS number of the chemical
         config: Plot configuration (uses PLOT_CONFIG if None)
         
@@ -576,7 +631,7 @@ def plot_ssd_global(
         go.Figure: Plotly figure ready for display (compatible with Streamlit)
         
     Raises:
-        ValueError: If CAS not found or no valid data
+        ValueError: If CAS not found or no valid SSD parameters or EF data
     """
     config = get_config(config)
 
@@ -755,8 +810,12 @@ def plot_ssd_comparison(
     """
     Create a comparison plot with multiple SSD curves superposed.
     
+    The SSD curves use pre-calculated parameters (SSD_mu_logEC10eq, SSD_sigma_logEC10eq) when available.
+    When these parameters are 0 (indicating a single value case), the SSD is calculated
+    from the Effect Factor (EF) in PAF.m3.kg from OpenChemFacts.
+    
     Args:
-        df_params: DataFrame with aggregated SSD parameters (SSD_mu_logEC10eq, SSD_sigma_logEC10eq)
+        df_params: DataFrame with SSD parameters and/or EF (Effect Factor) column in PAF.m3.kg
         cas_list: List of CAS numbers to compare (maximum 3)
         config: Plot configuration (uses PLOT_CONFIG if None)
     
