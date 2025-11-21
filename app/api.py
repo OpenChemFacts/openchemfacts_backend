@@ -184,21 +184,20 @@ def get_by_column(column: str):
 @router.get("/cas/list")
 def get_cas_list():
     """
-    Get list of all available CAS numbers with their chemical names.
+    Get list of all available CAS numbers with their chemical names from benchmark data.
     
     Returns:
-        Dictionary with CAS numbers and their corresponding chemical names
+        List of dictionaries, each containing cas_number and name
     """
-    df = load_data()
+    df = load_benchmark_data()
     
-    cas_data = df[["cas_number", "chemical_name"]].drop_duplicates()
-    cas_list = cas_data.groupby("cas_number")["chemical_name"].first().to_dict()
+    cas_data = df[["cas_number", "name"]].drop_duplicates()
+    cas_list = cas_data.groupby("cas_number")["name"].first().reset_index()
     
-    return {
-        "count": len(cas_list),
-        "cas_numbers": list(cas_list.keys()),
-        "cas_with_names": {cas: name for cas, name in cas_list.items()},
-    }
+    return [
+        {"cas_number": str(row["cas_number"]), "name": str(row["name"])}
+        for _, row in cas_list.iterrows()
+    ]
 
 
 @router.get("/cas/{cas}")
