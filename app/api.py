@@ -8,7 +8,7 @@ This module defines all the API endpoints including:
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List
-from .data_loader import load_data, load_data_polars
+from .data_loader import load_data, load_data_polars, load_benchmark_data
 import sys
 from pathlib import Path
 
@@ -123,7 +123,7 @@ def resolve_cas_from_identifier(identifier: str) -> str:
 @router.get("/summary")
 def get_summary():
     """
-    Get a summary of the available data.
+    Get a summary of the available benchmark data.
     
     Returns:
         Dictionary containing:
@@ -134,7 +134,7 @@ def get_summary():
     Raises:
         HTTPException: 404 if no data is available
     """
-    df = load_data()
+    df = load_benchmark_data()
 
     # Vérifier que les données existent
     if df.empty:
@@ -142,11 +142,11 @@ def get_summary():
 
     # Retourner les statistiques de base
     return {
-        "rows": int(df.shape[0]),
-        "columns": int(df.shape[1]),
-        "columns_names": list(df.columns),
+        "cas": int(df["cas_number"].nunique()),
+        "EF_openchemfacts(calculated)": int((df["Source"] == "OpenChemFacts 0.1").sum()),
+        "EF_usetox(official)": int((df["Source"] == "USETOX 2.14").sum()),
+        "EF_ef3.1(official)": int((df["Source"] == "EF 3.1").sum()),
     }
-
 
 @router.get("/by_column")
 def get_by_column(column: str):
