@@ -778,11 +778,13 @@ def plot_ssd_comparison(
     if config is None:
         config = PLOT_CONFIG
         
-    if len(cas_list) > 3:
-        raise ValueError(f"Maximum 3 substances can be compared. Provided: {len(cas_list)}")
-    
+    # Validation: ensure cas_list is not empty and has at most 3 elements
+    # Note: This validation is also done in the API layer, but kept here
+    # as a defensive programming practice
     if len(cas_list) == 0:
         raise ValueError("At least one CAS number must be provided")
+    if len(cas_list) > 3:
+        raise ValueError(f"Maximum 3 substances can be compared. Provided: {len(cas_list)}")
     
     colors = config.comparison_colors[:len(cas_list)]
     
