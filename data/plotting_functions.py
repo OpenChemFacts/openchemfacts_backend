@@ -626,9 +626,7 @@ def plot_ssd_global(
             yanchor="top",
             y=1,
             xanchor="right",
-            x=1,
-            xshift=-10,
-            yshift=-10,
+            x=0.98,  # Slightly adjust x position instead of using xshift
         ),
         hovermode="closest",
     )
