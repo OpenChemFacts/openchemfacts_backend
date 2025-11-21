@@ -62,8 +62,8 @@ class ComparisonRequest(BaseModel):
     
     Attributes:
         cas_list: List of CAS numbers or chemical names to compare (maximum 3)
-        width: Optional plot width in pixels (200-3000, default: 1000)
-        height: Optional plot height in pixels (200-2000, default: 600)
+        width: Optional plot width in pixels (200-3000, default: 1600)
+        height: Optional plot height in pixels (200-3000, default: 900)
     """
     cas_list: List[str]
     width: int = None
@@ -391,19 +391,19 @@ def search_substances(
 @router.get("/plot/ssd/{identifier}")
 def get_ssd_plot(
     identifier: str,
-    width: int = Query(None, ge=200, le=3000, description="Plot width in pixels (default: 1000)"),
-    height: int = Query(None, ge=200, le=2000, description="Plot height in pixels (default: 600)")
+    width: int = Query(None, ge=200, le=3000, description="Plot width in pixels (default: 1600)"),
+    height: int = Query(None, ge=200, le=3000, description="Plot height in pixels (default: 900)")
 ):
     """
     Generate SSD (Species Sensitivity Distribution) and HC20 plot for a single chemical.
     
     Args:
         identifier: CAS number or chemical name (case-insensitive, partial match supported)
-        width: Optional plot width in pixels (200-3000, default: 1000)
-        height: Optional plot height in pixels (200-2000, default: 600)
+        width: Optional plot width in pixels (200-3000, default: 1600)
+        height: Optional plot height in pixels (200-3000, default: 900)
         
     Returns:
-        JSON representation of the Plotly figure
+        JSON representation of the Plotly figure (responsive and auto-sized)
     """
     plot_ssd_global, _, _ = _load_plotting_functions()
     if plot_ssd_global is None:
@@ -492,12 +492,12 @@ def get_ssd_comparison(request: ComparisonRequest):
     Args:
         request: Request body containing:
                 - cas_list: List of CAS numbers or chemical names (maximum 3)
-                - width: Optional plot width in pixels (200-3000, default: 1000)
-                - height: Optional plot height in pixels (200-2000, default: 600)
+                - width: Optional plot width in pixels (200-3000, default: 1600)
+                - height: Optional plot height in pixels (200-3000, default: 900)
                 Each identifier can be a CAS number or chemical name (case-insensitive, partial match supported)
         
     Returns:
-        JSON representation of the Plotly figure
+        JSON representation of the Plotly figure (responsive and auto-sized)
     """
     _, _, plot_ssd_comparison = _load_plotting_functions()
     if plot_ssd_comparison is None:
@@ -518,8 +518,8 @@ def get_ssd_comparison(request: ComparisonRequest):
     # Validate dimensions if provided
     if request.width is not None and (request.width < 200 or request.width > 3000):
         raise HTTPException(status_code=400, detail="Width must be between 200 and 3000 pixels")
-    if request.height is not None and (request.height < 200 or request.height > 2000):
-        raise HTTPException(status_code=400, detail="Height must be between 200 and 2000 pixels")
+    if request.height is not None and (request.height < 200 or request.height > 3000):
+        raise HTTPException(status_code=400, detail="Height must be between 200 and 3000 pixels")
     
     try:
         # Resolve all identifiers to CAS numbers

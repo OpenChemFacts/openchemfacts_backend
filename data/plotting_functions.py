@@ -54,9 +54,9 @@ class PlotConfig:
     # Species color palette
     species_palette_multiplier: int = 10
     
-    # Plot dimensions (fixed for web UI consistency)
-    plot_width: int = 1000
-    plot_height: int = 600
+    # Plot dimensions (larger default for better visibility, responsive)
+    plot_width: int = 1600
+    plot_height: int = 900
     
     # Margins (in pixels) - optimized for multi-line titles
     margin_top: int = 120  # Extra space for multi-line titles
@@ -430,7 +430,7 @@ def get_base_layout_config(config: PlotConfig) -> dict:
     return {
         "width": config.plot_width,
         "height": config.plot_height,
-        "autosize": False,  # Use exact dimensions, don't auto-resize
+        "autosize": True,  # Allow auto-resizing to fit container
         "margin": dict(
             t=config.margin_top,
             b=config.margin_bottom,
