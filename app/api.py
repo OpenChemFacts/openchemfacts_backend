@@ -44,8 +44,12 @@ class ComparisonRequest(BaseModel):
     
     Attributes:
         cas_list: List of CAS numbers or chemical names to compare (maximum 3)
+        width: Optional plot width in pixels (200-3000, default: 1000)
+        height: Optional plot height in pixels (200-2000, default: 600)
     """
     cas_list: List[str]
+    width: int = None
+    height: int = None
 
 
 def resolve_cas_from_identifier(identifier: str) -> str:
@@ -367,12 +371,18 @@ def search_substances(
 
 
 @router.get("/plot/ssd/{identifier}")
-def get_ssd_plot(identifier: str):
+def get_ssd_plot(
+    identifier: str,
+    width: int = Query(None, ge=200, le=3000, description="Plot width in pixels (default: 1000)"),
+    height: int = Query(None, ge=200, le=2000, description="Plot height in pixels (default: 600)")
+):
     """
     Generate SSD (Species Sensitivity Distribution) and HC20 plot for a single chemical.
     
     Args:
         identifier: CAS number or chemical name (case-insensitive, partial match supported)
+        width: Optional plot width in pixels (200-3000, default: 1000)
+        height: Optional plot height in pixels (200-2000, default: 600)
         
     Returns:
         JSON representation of the Plotly figure
@@ -387,8 +397,18 @@ def get_ssd_plot(identifier: str):
         # Resolve identifier to CAS number
         cas = resolve_cas_from_identifier(identifier)
         
+        # Create custom config if dimensions are provided
+        config = None
+        if width is not None or height is not None:
+            from data.plotting_functions import PlotConfig
+            config = PlotConfig()
+            if width is not None:
+                config.plot_width = width
+            if height is not None:
+                config.plot_height = height
+        
         df_params = load_data_polars()
-        fig = plot_ssd_global(df_params, cas)
+        fig = plot_ssd_global(df_params, cas, config=config)
         return fig.to_dict()
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -397,12 +417,18 @@ def get_ssd_plot(identifier: str):
 
 
 @router.get("/plot/ec10eq/{identifier}")
-def get_ec10eq_plot(identifier: str):
+def get_ec10eq_plot(
+    identifier: str,
+    width: int = Query(None, ge=200, le=3000, description="Plot width in pixels (default: 1000)"),
+    height: int = Query(None, ge=200, le=2000, description="Plot height in pixels (default: 600)")
+):
     """
     Generate EC10eq results plot organized by taxa and species.
     
     Args:
         identifier: CAS number or chemical name (case-insensitive, partial match supported)
+        width: Optional plot width in pixels (200-3000, default: 1000)
+        height: Optional plot height in pixels (200-2000, default: 600)
         
     Returns:
         JSON representation of the Plotly figure
@@ -417,8 +443,18 @@ def get_ec10eq_plot(identifier: str):
         # Resolve identifier to CAS number
         cas = resolve_cas_from_identifier(identifier)
         
+        # Create custom config if dimensions are provided
+        config = None
+        if width is not None or height is not None:
+            from data.plotting_functions import PlotConfig
+            config = PlotConfig()
+            if width is not None:
+                config.plot_width = width
+            if height is not None:
+                config.plot_height = height
+        
         df_params = load_data_polars()
-        fig = plot_ec10eq_by_taxa_and_species(df_params, cas)
+        fig = plot_ec10eq_by_taxa_and_species(df_params, cas, config=config)
         return fig.to_dict()
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -432,7 +468,10 @@ def get_ssd_comparison(request: ComparisonRequest):
     Create a comparison plot with multiple SSD curves superposed.
     
     Args:
-        request: Request body containing a list of CAS numbers or chemical names (maximum 3)
+        request: Request body containing:
+                - cas_list: List of CAS numbers or chemical names (maximum 3)
+                - width: Optional plot width in pixels (200-3000, default: 1000)
+                - height: Optional plot height in pixels (200-2000, default: 600)
                 Each identifier can be a CAS number or chemical name (case-insensitive, partial match supported)
         
     Returns:
@@ -453,6 +492,12 @@ def get_ssd_comparison(request: ComparisonRequest):
             detail=f"Maximum 3 substances can be compared. Provided: {len(request.cas_list)}"
         )
     
+    # Validate dimensions if provided
+    if request.width is not None and (request.width < 200 or request.width > 3000):
+        raise HTTPException(status_code=400, detail="Width must be between 200 and 3000 pixels")
+    if request.height is not None and (request.height < 200 or request.height > 2000):
+        raise HTTPException(status_code=400, detail="Height must be between 200 and 2000 pixels")
+    
     try:
         # Resolve all identifiers to CAS numbers
         resolved_cas_list = []
@@ -460,8 +505,18 @@ def get_ssd_comparison(request: ComparisonRequest):
             cas = resolve_cas_from_identifier(identifier)
             resolved_cas_list.append(cas)
         
+        # Create custom config if dimensions are provided
+        config = None
+        if request.width is not None or request.height is not None:
+            from data.plotting_functions import PlotConfig
+            config = PlotConfig()
+            if request.width is not None:
+                config.plot_width = request.width
+            if request.height is not None:
+                config.plot_height = request.height
+        
         df_params = load_data_polars()
-        fig = plot_ssd_comparison(df_params, resolved_cas_list)
+        fig = plot_ssd_comparison(df_params, resolved_cas_list, config=config)
         return fig.to_dict()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

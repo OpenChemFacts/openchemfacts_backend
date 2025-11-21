@@ -9,9 +9,10 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
-from typing import Dict, List, Tuple, Optional
+# plotly.express and make_subplots are kept for future use when plot_ec10eq_by_taxa_and_species is reimplemented
+# from plotly.express import px
+# from plotly.subplots import make_subplots
+from typing import Dict, List, Tuple
 from dataclasses import dataclass
 
 
@@ -89,12 +90,96 @@ PLOT_CONFIG = PlotConfig()
 # Shared Helper Functions
 # ============================================================================
 
-def filter_and_validate_data(df_params: pl.DataFrame, cas: str) -> Tuple[pl.DataFrame, str]:
+def get_config(config: PlotConfig = None) -> PlotConfig:
     """
-    Filter data for the requested CAS and validate mu/sigma values.
+    Get plot configuration, using default if None provided.
     
     Args:
-        df_params: DataFrame with SSD parameters
+        config: Optional plot configuration
+        
+    Returns:
+        PlotConfig instance
+    """
+    return config if config is not None else PLOT_CONFIG
+
+
+def extract_values_list(sub: pl.DataFrame) -> List[float]:
+    """
+    Safely extract the values list from a Polars DataFrame.
+    
+    Args:
+        sub: DataFrame with a 'values' column containing lists
+        
+    Returns:
+        List of float values, or empty list if not available
+    """
+    if "values" not in sub.columns or sub.height == 0:
+        return []
+    
+    values_series = sub["values"][0]
+    if isinstance(values_series, pl.Series):
+        return values_series.to_list()
+    elif values_series is not None:
+        return values_series if isinstance(values_series, list) else []
+    else:
+        return []
+
+
+def get_valid_values(values_list: List[float]) -> np.ndarray:
+    """
+    Extract and filter valid (positive) values from a list.
+    
+    Args:
+        values_list: List of float values
+        
+    Returns:
+        NumPy array of valid (positive) values
+    """
+    if len(values_list) == 0:
+        return np.array([])
+    
+    values_array = np.array(values_list)
+    return values_array[values_array > 0]
+
+
+def calculate_data_range(
+    sub: pl.DataFrame,
+    mu_ssd: float,
+    sigma_ssd: float,
+    config: PlotConfig = None,
+) -> Tuple[float, float]:
+    """
+    Calculate data range (min, max) from actual values or SSD parameters.
+    
+    Args:
+        sub: Filtered dataframe (aggregated at CAS level)
+        mu_ssd: SSD mean parameter
+        sigma_ssd: SSD sigma parameter
+        config: Plot configuration (uses PLOT_CONFIG if None)
+        
+    Returns:
+        Tuple of (min_value, max_value) in real units (mg/L)
+    """
+    config = get_config(config)
+    values_list = extract_values_list(sub)
+    valid_values = get_valid_values(values_list)
+    
+    if len(valid_values) > 0:
+        return float(valid_values.min()), float(valid_values.max())
+    else:
+        # Fallback to SSD-based range
+        return (
+            10 ** (mu_ssd - 3 * sigma_ssd),
+            10 ** (mu_ssd + 3 * sigma_ssd)
+        )
+
+
+def filter_and_validate_data(df_params: pl.DataFrame, cas: str) -> Tuple[pl.DataFrame, str]:
+    """
+    Filter data for the requested CAS and validate SSD parameters.
+    
+    Args:
+        df_params: DataFrame with SSD parameters (aggregated at CAS level)
         cas: CAS number to filter
         
     Returns:
@@ -109,34 +194,29 @@ def filter_and_validate_data(df_params: pl.DataFrame, cas: str) -> Tuple[pl.Data
     
     chem_name = sub["chemical_name"][0] if "chemical_name" in sub.columns else cas
 
+    # Validate SSD parameters (new structure: SSD_mu_logEC10eq and SSD_sigma_logEC10eq)
     sub = sub.filter(
-        pl.col("mu").is_finite() & pl.col("mu").is_not_null()
-        & pl.col("sigma").is_finite() & (pl.col("sigma") >= 0)
+        pl.col("SSD_mu_logEC10eq").is_finite() & pl.col("SSD_mu_logEC10eq").is_not_null()
+        & pl.col("SSD_sigma_logEC10eq").is_finite() & (pl.col("SSD_sigma_logEC10eq") >= 0)
     )
     if sub.height == 0:
-        raise ValueError(f"No valid mu/sigma values found for CAS {cas}.")
+        raise ValueError(f"No valid SSD parameters found for CAS {cas}.")
     
     return sub, chem_name
 
 
 def calculate_ssd_parameters(sub: pl.DataFrame) -> Tuple[float, float]:
     """
-    Calculate global SSD parameters (mean and std of species-level mu).
+    Extract SSD parameters from aggregated data.
     
     Args:
-        sub: Filtered dataframe with mu values
+        sub: Filtered dataframe with SSD_mu_logEC10eq and SSD_sigma_logEC10eq
         
     Returns:
         Tuple of (mu_ssd, sigma_ssd)
     """
-    mu_ssd = float(sub["mu"].mean())
-    sigma_ssd_val = sub["mu"].std(ddof=1)
-    
-    # Gérer le cas où std() retourne None (toutes les valeurs identiques ou une seule valeur)
-    if sigma_ssd_val is None:
-        sigma_ssd = 0.0
-    else:
-        sigma_ssd = float(sigma_ssd_val)
+    mu_ssd = float(sub["SSD_mu_logEC10eq"][0])
+    sigma_ssd = float(sub["SSD_sigma_logEC10eq"][0])
     
     # Si sigma est 0 ou négatif, utiliser une valeur minimale
     if sigma_ssd <= 0:
@@ -157,19 +237,32 @@ def calculate_ssd_curve(
     Calculate the SSD curve (CDF) in log10-space and real units.
     
     Args:
-        sub: Filtered dataframe
-        mu_ssd: Mean of species-level mu
-        sigma_ssd: Standard deviation of species-level mu
+        sub: Filtered dataframe (aggregated at CAS level)
+        mu_ssd: SSD mean parameter
+        sigma_ssd: SSD sigma parameter
         config: Plot configuration (uses PLOT_CONFIG if None)
         
     Returns:
         Tuple of (x_log, x_real, cdf_global)
     """
-    if config is None:
-        config = PLOT_CONFIG
-        
-    mu_min, mu_max = float(sub["mu"].min()), float(sub["mu"].max())
-    mu_range = max(mu_max - mu_min, 1.0)
+    config = get_config(config)
+    
+    # For aggregated data, use a range around mu_ssd
+    # Use values from the 'values' column if available to determine range
+    values_list = extract_values_list(sub)
+    valid_values = get_valid_values(values_list)
+    
+    if len(valid_values) > 0:
+        # Use actual EC10eq values to determine range
+        log_values = np.log10(valid_values)
+        mu_min, mu_max = float(log_values.min()), float(log_values.max())
+        mu_range = max(mu_max - mu_min, 1.0)
+    else:
+        # Fallback: use range around mu_ssd
+        mu_range = max(3.0 * sigma_ssd, 1.0)
+        mu_min = mu_ssd - config.sigma_margin * mu_range
+        mu_max = mu_ssd + config.sigma_margin * mu_range
+    
     x_log = np.linspace(
         mu_min - config.sigma_margin * mu_range,
         mu_max + config.sigma_margin * mu_range,
@@ -180,21 +273,28 @@ def calculate_ssd_curve(
     return x_log, x_real, cdf_global
 
 
-def calculate_hc20(mu_ssd: float, sigma_ssd: float, config: PlotConfig = None) -> float:
+def calculate_hc20(sub: pl.DataFrame, mu_ssd: float, sigma_ssd: float, config: PlotConfig = None) -> float:
     """
-    Calculate HC20 value from SSD parameters.
+    Get or calculate HC20 value from SSD parameters.
     
     Args:
-        mu_ssd: Mean of species-level mu
-        sigma_ssd: Standard deviation of species-level mu
+        sub: Filtered dataframe (may contain pre-calculated HC20)
+        mu_ssd: SSD mean parameter
+        sigma_ssd: SSD sigma parameter
         config: Plot configuration (uses PLOT_CONFIG if None)
         
     Returns:
         HC20 value in real units (mg/L)
     """
-    if config is None:
-        config = PLOT_CONFIG
-        
+    config = get_config(config)
+    
+    # Try to use pre-calculated HC20 if available
+    if "HC20" in sub.columns:
+        hc20_val = sub["HC20"][0]
+        if hc20_val is not None and np.isfinite(hc20_val) and hc20_val > 0:
+            return float(hc20_val)
+    
+    # Otherwise calculate from SSD parameters
     hc20 = 10 ** (mu_ssd + sigma_ssd * norm.ppf(config.hc20_percentile))
     if not (np.isfinite(hc20) and hc20 > 0):
         raise ValueError(f"Invalid HC20 value: {hc20}")
@@ -204,26 +304,28 @@ def calculate_hc20(mu_ssd: float, sigma_ssd: float, config: PlotConfig = None) -
 def calculate_x_axis_range(
     sub: pl.DataFrame,
     hc20: float,
+    mu_ssd: float,
+    sigma_ssd: float,
     config: PlotConfig = None,
 ) -> Tuple[float, float]:
     """
-    Compute an adaptive x-axis range based on species EC10eq (10**mu),
+    Compute an adaptive x-axis range based on EC10eq values or SSD parameters,
     then extend just enough to include HC20.
     
     Args:
-        sub: Filtered dataframe
+        sub: Filtered dataframe (aggregated at CAS level)
         hc20: HC20 value
+        mu_ssd: SSD mean parameter
+        sigma_ssd: SSD sigma parameter
         config: Plot configuration (uses PLOT_CONFIG if None)
         
     Returns:
         Tuple of (x_plot_min, x_plot_max) in mg/L
     """
-    if config is None:
-        config = PLOT_CONFIG
-        
-    ec10_species = np.power(10.0, sub["mu"].to_numpy())
-    x_min_data = float(ec10_species.min())
-    x_max_data = float(ec10_species.max())
+    config = get_config(config)
+    
+    # Try to use actual EC10eq values from 'values' column
+    x_min_data, x_max_data = calculate_data_range(sub, mu_ssd, sigma_ssd, config)
 
     log_min = np.log10(x_min_data)
     log_max = np.log10(x_max_data)
@@ -246,29 +348,33 @@ def calculate_x_axis_range(
 def calculate_global_x_axis_range(
     all_subs: List[pl.DataFrame],
     all_hc20s: List[float],
+    all_mu_ssds: List[float],
+    all_sigma_ssds: List[float],
     config: PlotConfig = None,
 ) -> Tuple[float, float]:
     """
     Compute a global x-axis range that encompasses all substances.
     
     Args:
-        all_subs: List of filtered dataframes (one per CAS)
+        all_subs: List of filtered dataframes (one per CAS, aggregated)
         all_hc20s: List of HC20 values (one per CAS)
+        all_mu_ssds: List of SSD mu parameters (one per CAS)
+        all_sigma_ssds: List of SSD sigma parameters (one per CAS)
         config: Plot configuration (uses PLOT_CONFIG if None)
     
     Returns:
         Tuple of (x_plot_min, x_plot_max) in mg/L
     """
-    if config is None:
-        config = PLOT_CONFIG
+    config = get_config(config)
         
     all_mins = []
     all_maxs = []
     
-    for sub in all_subs:
-        ec10_species = np.power(10.0, sub["mu"].to_numpy())
-        all_mins.append(float(ec10_species.min()))
-        all_maxs.append(float(ec10_species.max()))
+    for sub, mu_ssd, sigma_ssd in zip(all_subs, all_mu_ssds, all_sigma_ssds):
+        # Use shared function to calculate data range
+        x_min, x_max = calculate_data_range(sub, mu_ssd, sigma_ssd, config)
+        all_mins.append(x_min)
+        all_maxs.append(x_max)
     
     x_min_data = min(all_mins)
     x_max_data = max(all_maxs)
@@ -311,6 +417,60 @@ def generate_log_ticks(x_min: float, x_max: float) -> Tuple[List[float], List[st
     return tickvals, ticktext
 
 
+def get_base_layout_config(config: PlotConfig) -> dict:
+    """
+    Get base layout configuration (dimensions and margins).
+    
+    Args:
+        config: Plot configuration
+        
+    Returns:
+        Dictionary with width, height, and margin settings
+    """
+    return {
+        "width": config.plot_width,
+        "height": config.plot_height,
+        "margin": dict(
+            t=config.margin_top,
+            b=config.margin_bottom,
+            l=config.margin_left,
+            r=config.margin_right,
+        ),
+    }
+
+
+def get_log_xaxis_config(
+    x_plot_min: float,
+    x_plot_max: float,
+    tickvals: List[float] = None,
+    ticktext: List[str] = None,
+) -> dict:
+    """
+    Get log-scale x-axis configuration.
+    
+    Args:
+        x_plot_min: Minimum x value
+        x_plot_max: Maximum x value
+        tickvals: Optional tick values (auto-generated if None)
+        ticktext: Optional tick labels (auto-generated if None)
+        
+    Returns:
+        Dictionary with x-axis configuration
+    """
+    if tickvals is None or ticktext is None:
+        tickvals, ticktext = generate_log_ticks(x_plot_min, x_plot_max)
+    
+    return {
+        "type": "log",
+        "range": [np.log10(x_plot_min), np.log10(x_plot_max)],
+        "tickmode": "array",
+        "tickvals": tickvals,
+        "ticktext": ticktext,
+        "showgrid": True,
+        "ticks": "outside",
+    }
+
+
 # ============================================================================
 # Graph 1: SSD and HC20 per Chemical
 # ============================================================================
@@ -322,8 +482,7 @@ def add_ssd_trace(
     config: PlotConfig = None,
 ) -> None:
     """Add the global SSD curve trace to the figure."""
-    if config is None:
-        config = PLOT_CONFIG
+    config = get_config(config)
         
     fig.add_trace(go.Scatter(
         x=x_real, 
@@ -343,8 +502,7 @@ def add_hc20_annotation(
     config: PlotConfig = None,
 ) -> None:
     """Add HC20 lines and annotation to the figure."""
-    if config is None:
-        config = PLOT_CONFIG
+    config = get_config(config)
 
     fig.add_hline(
         y=config.hc20_percentile * 100,
@@ -387,41 +545,17 @@ def add_species_points(
     sub: pl.DataFrame,
     config: PlotConfig = None,
 ) -> None:
-    """Add species points grouped by taxa to the figure."""
-    if config is None:
-        config = PLOT_CONFIG
-        
-    n_species = sub.height
+    """
+    Add species points to the figure.
     
-    # Calculer n_results à partir de la colonne values (liste de valeurs EC10eq)
-    sub_with_n = sub.with_columns([
-        pl.col("values").list.len().alias("n_results")
-    ])
-    
-    sub_sorted = sub_with_n.sort("mu").with_columns([
-        ((pl.arange(1, n_species + 1) - 0.5) / n_species * 100).alias("fraction_pct"),
-        (10 ** pl.col("mu")).alias("EC10eq"),
-    ])
-    
-    for (taxa,), g in sub_sorted.group_by(["ecotox_group_unepsetacjrc2018"], maintain_order=True):
-        taxa = str(taxa) if taxa is not None else "unknown"
-        custom_n = g["n_results"].to_list()
-        fig.add_trace(go.Scatter(
-            x=g["EC10eq"].to_list(), 
-            y=g["fraction_pct"].to_list(),
-            mode="markers", 
-            marker=dict(
-                symbol=config.taxa_symbols.get(taxa, "circle"), 
-                size=config.marker_size
-            ),
-            name=taxa, 
-            text=g["species_common_name"].to_list(),
-            customdata=custom_n,
-            hovertemplate=(
-                "Species: %{text}<br>Taxon: " + taxa + "<br>"
-                "# EC10eq results used: %{customdata}"
-            ),
-        ))
+    NOTE: With the new aggregated data structure, individual species data
+    is no longer available. This function is kept for API compatibility
+    but does not add any points (as per requirement 1A).
+    """
+    # With aggregated data structure, we don't have individual species data
+    # so we don't add any points (requirement: remove species points)
+    # Arguments are kept for API compatibility but unused
+    _ = fig, sub, config
 
 
 def plot_ssd_global(
@@ -433,7 +567,7 @@ def plot_ssd_global(
     Generate SSD (Species Sensitivity Distribution) and HC20 plot for a single chemical.
     
     Args:
-        df_params: DataFrame with SSD parameters (mu, sigma) per species
+        df_params: DataFrame with aggregated SSD parameters (SSD_mu_logEC10eq, SSD_sigma_logEC10eq)
         cas: CAS number of the chemical
         config: Plot configuration (uses PLOT_CONFIG if None)
         
@@ -443,42 +577,37 @@ def plot_ssd_global(
     Raises:
         ValueError: If CAS not found or no valid data
     """
-    if config is None:
-        config = PLOT_CONFIG
+    config = get_config(config)
 
     sub, chem_name = filter_and_validate_data(df_params, cas)
-    n_species = sub["species_common_name"].n_unique()
-    n_trophic_level = sub["ecotox_group_unepsetacjrc2018"].n_unique()
-    n_results = sub.height
+    
+    # Get aggregated statistics from new structure
+    n_species = int(sub["n_species"][0]) if "n_species" in sub.columns else 0
+    values_list = extract_values_list(sub)
+    n_results = len(values_list)
 
     mu_ssd, sigma_ssd = calculate_ssd_parameters(sub)
-    x_log, x_real, cdf_global = calculate_ssd_curve(sub, mu_ssd, sigma_ssd, config)
-    hc20 = calculate_hc20(mu_ssd, sigma_ssd, config)
-    x_plot_min, x_plot_max = calculate_x_axis_range(sub, hc20, config)
+    _, x_real, cdf_global = calculate_ssd_curve(sub, mu_ssd, sigma_ssd, config)
+    hc20 = calculate_hc20(sub, mu_ssd, sigma_ssd, config)
+    x_plot_min, x_plot_max = calculate_x_axis_range(sub, hc20, mu_ssd, sigma_ssd, config)
     
     tickvals, ticktext = generate_log_ticks(x_plot_min, x_plot_max)
     
     fig = go.Figure()
     
     add_ssd_trace(fig, x_real, cdf_global, config)
+    # Note: add_species_points is called but does nothing with aggregated data (requirement 1A)
     add_species_points(fig, sub, config)
     add_hc20_annotation(fig, hc20, x_plot_min, x_plot_max, config)
     
+    base_layout = get_base_layout_config(config)
     fig.update_layout(
-        width=config.plot_width,
-        height=config.plot_height,
-        margin=dict(
-            t=config.margin_top,
-            b=config.margin_bottom,
-            l=config.margin_left,
-            r=config.margin_right,
-        ),
+        **base_layout,
         title=dict(
             text=(
                 "<b>Species Sensitivity Distribution (SSD) and HC20</b><br>"
                 f"<b>Chemical:</b> {chem_name} (CAS {cas})<br>"
-                f"<b>Details:</b> {n_results} EC10eq result(s) / "
-                f"{n_species} species / {n_trophic_level} trophic level(s)"
+                f"<b>Details:</b> {n_results} EC10eq result(s) / {n_species} species"
             ),
             x=0.5,
             xanchor="center",
@@ -486,17 +615,9 @@ def plot_ssd_global(
         xaxis_title="Concentration (mg/L)",
         yaxis_title="Affected species (%)",
         yaxis=dict(range=[0, 100], ticksuffix=" %"),
-        xaxis=dict(
-            type="log",
-            range=[np.log10(x_plot_min), np.log10(x_plot_max)],
-            tickmode="array",
-            tickvals=tickvals,
-            ticktext=ticktext,
-            showgrid=True,
-            ticks="outside",
-        ),
+        xaxis=get_log_xaxis_config(x_plot_min, x_plot_max, tickvals, ticktext),
         template=config.template,
-        legend_title="Taxa / SSD",
+        legend_title="SSD",
         hovermode="closest",
     )
 
@@ -515,6 +636,10 @@ def plot_ec10eq_by_taxa_and_species(
     """
     Generate EC10eq results plot organized by taxa (subplots) and species (x-axis).
     
+    NOTE: This function is temporarily disabled due to data structure changes.
+    The new aggregated data structure no longer contains individual species/taxa information.
+    This function will be modified in a second phase to work with the new structure.
+    
     Args:
         df_params: DataFrame with EC10eq values
         cas: CAS number of the chemical
@@ -524,158 +649,14 @@ def plot_ec10eq_by_taxa_and_species(
         go.Figure: Plotly figure ready for display (compatible with Streamlit)
         
     Raises:
-        ValueError: If CAS not found or no valid data
+        ValueError: Always raised with explanation message
     """
-    if config is None:
-        config = PLOT_CONFIG
-
-    sub = df_params.filter(pl.col("cas_number") == cas)
-    if sub.height == 0:
-        raise ValueError(f"CAS {cas} not found in dataframe.")
-
-    chem_name = sub["chemical_name"][0] if "chemical_name" in sub.columns else cas
-    n_species = sub["species_common_name"].n_unique()
-    n_trophic_level = sub["ecotox_group_unepsetacjrc2018"].n_unique()
-
-    exploded = (
-        sub
-        .explode("values")
-        .rename({"values": "EC10eq"})
-        .filter(pl.col("EC10eq").is_finite() & (pl.col("EC10eq") > 0))
+    raise ValueError(
+        "The EC10eq by taxa and species plot is temporarily disabled. "
+        "The data structure has changed to an aggregated format that no longer "
+        "contains individual species/taxa information. This function will be "
+        "modified in a second phase to work with the new structure."
     )
-    if exploded.height == 0:
-        raise ValueError("No valid EC10eq values found for this CAS.")
-
-    n_results = exploded.height
-
-    taxa_counts = (
-        exploded
-        .group_by("ecotox_group_unepsetacjrc2018")
-        .agg([
-            pl.col("species_common_name").n_unique().alias("n_species"),
-            pl.col("EC10eq").count().alias("n_results"),
-        ])
-        .sort("ecotox_group_unepsetacjrc2018")
-    )
-
-    taxa_list = taxa_counts["ecotox_group_unepsetacjrc2018"].to_list()
-    counts_species = [int(x) for x in taxa_counts["n_species"].to_list()]
-    counts_results = [int(x) for x in taxa_counts["n_results"].to_list()]
-
-    total_species = sum(counts_species)
-    column_widths = [ns / total_species for ns in counts_species]
-
-    species_list = exploded["species_common_name"].unique().to_list()
-    palette = px.colors.qualitative.Dark24 * config.species_palette_multiplier
-    color_map = {sp: palette[i % len(palette)] for i, sp in enumerate(species_list)}
-
-    y_min = float(exploded["EC10eq"].min())
-    y_max = float(exploded["EC10eq"].max())
-    min_pow = int(np.floor(np.log10(y_min)))
-    max_pow = int(np.ceil(np.log10(y_max)))
-    y_tickvals = [10 ** p for p in range(min_pow, max_pow + 1)]
-    y_ticktext = [f"{v:g}" for v in y_tickvals]
-
-    fig = make_subplots(
-        rows=1,
-        cols=len(taxa_list),
-        shared_yaxes=True,
-        horizontal_spacing=0.05,
-        column_widths=column_widths,
-        subplot_titles=[None] * len(taxa_list),
-    )
-
-    for idx, (taxa, n_res_taxa) in enumerate(zip(taxa_list, counts_results), start=1):
-        g_taxa = exploded.filter(pl.col("ecotox_group_unepsetacjrc2018") == taxa)
-        if g_taxa.height == 0:
-            continue
-
-        species_in_taxa = g_taxa["species_common_name"].unique().to_list()
-
-        for sp in species_in_taxa:
-            g_sp = g_taxa.filter(pl.col("species_common_name") == sp)
-
-            fig.add_trace(
-                go.Scatter(
-                    x=g_sp["species_common_name"].to_list(),
-                    y=g_sp["EC10eq"].to_list(),
-                    mode="markers",
-                    marker=dict(
-                        color=color_map[sp],
-                        size=config.marker_size,
-                        line=dict(width=0.5, color="black"),
-                    ),
-                    showlegend=False,
-                    hovertemplate=(
-                        f"Taxon: {taxa}<br>"
-                        "Species: %{x}<br>"
-                        "EC10eq = %{y:.4g} mg/L"
-                        "<extra></extra>"
-                    ),
-                ),
-                row=1,
-                col=idx,
-            )
-
-        fig.update_xaxes(
-            type="category",
-            showticklabels=True,
-            title_text=None,
-            row=1,
-            col=idx,
-        )
-
-        axis_suffix = "" if idx == 1 else str(idx)
-        fig.add_annotation(
-            xref=f"x{axis_suffix} domain",
-            yref="paper",
-            x=0.5,
-            y=1.02,
-            text=f"<b>{taxa} ({n_res_taxa} results)</b>",
-            showarrow=False,
-            font=dict(size=14),
-        )
-
-    for col in range(1, len(taxa_list) + 1):
-        fig.update_yaxes(
-            type="log",
-            tickmode="array",
-            tickvals=y_tickvals,
-            ticktext=y_ticktext,
-            range=[min_pow - 0.2, max_pow + 0.2],
-            row=1,
-            col=col,
-        )
-
-    fig.update_yaxes(title_text="EC10eq (mg/L)", row=1, col=1)
-
-    fig.update_layout(
-        width=config.plot_width,
-        height=config.plot_height,
-        margin=dict(
-            t=config.margin_top,
-            b=config.margin_bottom,
-            l=config.margin_left,
-            r=config.margin_right,
-        ),
-        title=dict(
-            text=(
-                "<b>EC10eq calculated results per chemical</b><br>"
-                f"<b>Chemical:</b> {chem_name} (CAS {cas})<br>"
-                f"<b>Details:</b> {n_results} EC10eq result(s) / "
-                f"{n_species} species / {n_trophic_level} trophic level(s)"
-            ),
-            x=0.5,
-            xanchor="center",
-            y=0.98,
-            yanchor="top",
-        ),
-        template=config.template,
-        hovermode="closest",
-        showlegend=False,
-    )
-
-    return fig
 
 
 # ============================================================================
@@ -692,8 +673,7 @@ def add_ssd_trace_comparison(
     config: PlotConfig = None,
 ) -> None:
     """Add an SSD curve trace to the comparison figure with a specific color."""
-    if config is None:
-        config = PLOT_CONFIG
+    config = get_config(config)
         
     fig.add_trace(go.Scatter(
         x=x_real, 
@@ -713,7 +693,7 @@ def add_hc20_annotation_comparison(
     fig: go.Figure,
     hc20: float,
     chem_name: str,
-    cas: str,
+    cas: str,  # kept for API compatibility but unused
     x_plot_min: float,
     x_plot_max: float,
     color: str,
@@ -721,8 +701,9 @@ def add_hc20_annotation_comparison(
     config: PlotConfig = None,
 ) -> None:
     """Add HC20 vertical line and annotation for comparison plot."""
-    if config is None:
-        config = PLOT_CONFIG
+    config = get_config(config)
+    
+    _ = cas  # unused parameter kept for API compatibility
     
     fig.add_vline(
         x=hc20,
@@ -765,7 +746,7 @@ def plot_ssd_comparison(
     Create a comparison plot with multiple SSD curves superposed.
     
     Args:
-        df_params: DataFrame with SSD parameters (mu, sigma) per species
+        df_params: DataFrame with aggregated SSD parameters (SSD_mu_logEC10eq, SSD_sigma_logEC10eq)
         cas_list: List of CAS numbers to compare (maximum 3)
         config: Plot configuration (uses PLOT_CONFIG if None)
     
@@ -775,8 +756,7 @@ def plot_ssd_comparison(
     Raises:
         ValueError: If more than 3 CAS numbers are provided or if any CAS is invalid
     """
-    if config is None:
-        config = PLOT_CONFIG
+    config = get_config(config)
         
     # Validation: ensure cas_list is not empty and has at most 3 elements
     # Note: This validation is also done in the API layer, but kept here
@@ -791,6 +771,8 @@ def plot_ssd_comparison(
     all_subs = []
     all_chem_names = []
     all_hc20s = []
+    all_mu_ssds = []
+    all_sigma_ssds = []
     all_x_reals = []
     all_cdfs = []
     
@@ -800,14 +782,19 @@ def plot_ssd_comparison(
         all_chem_names.append(chem_name)
         
         mu_ssd, sigma_ssd = calculate_ssd_parameters(sub)
-        hc20 = calculate_hc20(mu_ssd, sigma_ssd, config)
+        all_mu_ssds.append(mu_ssd)
+        all_sigma_ssds.append(sigma_ssd)
+        
+        hc20 = calculate_hc20(sub, mu_ssd, sigma_ssd, config)
         all_hc20s.append(hc20)
         
-        x_log, x_real, cdf_global = calculate_ssd_curve(sub, mu_ssd, sigma_ssd, config)
+        _, x_real, cdf_global = calculate_ssd_curve(sub, mu_ssd, sigma_ssd, config)
         all_x_reals.append(x_real)
         all_cdfs.append(cdf_global)
     
-    x_plot_min, x_plot_max = calculate_global_x_axis_range(all_subs, all_hc20s, config)
+    x_plot_min, x_plot_max = calculate_global_x_axis_range(
+        all_subs, all_hc20s, all_mu_ssds, all_sigma_ssds, config
+    )
     tickvals, ticktext = generate_log_ticks(x_plot_min, x_plot_max)
     
     fig = go.Figure()
@@ -825,15 +812,12 @@ def plot_ssd_comparison(
             fig, hc20, chem_name, cas, x_plot_min, x_plot_max, color, y_positions[i], config
         )
     
+    base_layout = get_base_layout_config(config)
+    # Add extra space for bottom legend in comparison plot
+    base_layout["margin"]["b"] += 60
+    
     fig.update_layout(
-        width=config.plot_width,
-        height=config.plot_height,
-        margin=dict(
-            t=config.margin_top,
-            b=config.margin_bottom + 60,  # Extra space for bottom legend
-            l=config.margin_left,
-            r=config.margin_right,
-        ),
+        **base_layout,
         title=dict(
             text="<b>Species Sensitivity Distribution (SSD) Comparison</b>",
             x=0.5,
@@ -842,15 +826,7 @@ def plot_ssd_comparison(
         xaxis_title="Concentration (mg/L)",
         yaxis_title="Affected species (%)",
         yaxis=dict(range=[0, 100], ticksuffix=" %"),
-        xaxis=dict(
-            type="log",
-            range=[np.log10(x_plot_min), np.log10(x_plot_max)],
-            tickmode="array",
-            tickvals=tickvals,
-            ticktext=ticktext,
-            showgrid=True,
-            ticks="outside",
-        ),
+        xaxis=get_log_xaxis_config(x_plot_min, x_plot_max, tickvals, ticktext),
         template=config.template,
         legend=dict(
             title="Substances",
