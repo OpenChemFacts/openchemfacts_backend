@@ -158,7 +158,7 @@ def calculate_data_range(
         config: Plot configuration (uses PLOT_CONFIG if None)
         
     Returns:
-        Tuple of (min_value, max_value) in real units (mg/L)
+        Tuple of (min_value, max_value) in real units (PAF.m3.kg)
     """
     config = get_config(config)
     values_list = extract_values_list(sub)
@@ -284,7 +284,7 @@ def calculate_hc20(sub: pl.DataFrame, mu_ssd: float, sigma_ssd: float, config: P
         config: Plot configuration (uses PLOT_CONFIG if None)
         
     Returns:
-        HC20 value in real units (mg/L)
+        HC20 value in real units (PAF.m3.kg)
     """
     config = get_config(config)
     
@@ -320,7 +320,7 @@ def calculate_x_axis_range(
         config: Plot configuration (uses PLOT_CONFIG if None)
         
     Returns:
-        Tuple of (x_plot_min, x_plot_max) in mg/L
+        Tuple of (x_plot_min, x_plot_max) in PAF.m3.kg
     """
     config = get_config(config)
     
@@ -363,7 +363,7 @@ def calculate_global_x_axis_range(
         config: Plot configuration (uses PLOT_CONFIG if None)
     
     Returns:
-        Tuple of (x_plot_min, x_plot_max) in mg/L
+        Tuple of (x_plot_min, x_plot_max) in PAF.m3.kg
     """
     config = get_config(config)
         
@@ -491,7 +491,7 @@ def add_ssd_trace(
         mode="lines",
         line=dict(width=config.ssd_line_width, color=config.ssd_line_color),
         name="Average SSD",
-        hovertemplate="Concentration: %{x:.2g} mg/L<br>% of species affected: %{y:.0f}%<extra></extra>",
+        hovertemplate="Effect Factor: %{x:.2g} PAF.m3.kg<br>% of species affected: %{y:.0f}%<extra></extra>",
     ))
 
 
@@ -531,7 +531,7 @@ def add_hc20_annotation(
         y=config.hc20_annotation_y,
         xref="paper",
         yref="paper",
-        text=f"<b>HC20 = {hc20:.2g} mg/L</b>",
+        text=f"<b>HC20 = {hc20:.2g} PAF.m3.kg</b>",
         showarrow=False,
         font=dict(color="red", size=config.hc20_font_size),
         xanchor="right",
@@ -615,7 +615,7 @@ def plot_ssd_global(
             x=0.5,
             xanchor="center",
         ),
-        xaxis_title="Concentration (mg/L)",
+        xaxis_title="Effect Factor (PAF.m3.kg)",
         yaxis_title="Affected species (%)",
         yaxis=dict(range=[0, 100], ticksuffix=" %"),
         xaxis=get_log_xaxis_config(x_plot_min, x_plot_max, tickvals, ticktext),
@@ -693,7 +693,7 @@ def add_ssd_trace_comparison(
         name=f"{chem_name} (CAS {cas})",
         hovertemplate=(
             f"<b>{chem_name}</b> (CAS {cas})<br>"
-            "Concentration: %{x:.2g} mg/L<br>"
+            "Effect Factor: %{x:.2g} PAF.m3.kg<br>"
             "% of species affected: %{y:.0f}%<extra></extra>"
         ),
     ))
@@ -735,7 +735,7 @@ def add_hc20_annotation_comparison(
         y=y_position,
         xref="paper",
         yref="paper",
-        text=f"<b>{chem_name}</b><br>HC20 = {hc20:.2g} mg/L",
+        text=f"<b>{chem_name}</b><br>HC20 = {hc20:.2g} PAF.m3.kg",
         showarrow=False,
         font=dict(color=color, size=10),
         xanchor="left",
@@ -834,7 +834,7 @@ def plot_ssd_comparison(
             x=0.5,
             xanchor="center",
         ),
-        xaxis_title="Concentration (mg/L)",
+        xaxis_title="Effect Factor (PAF.m3.kg)",
         yaxis_title="Affected species (%)",
         yaxis=dict(range=[0, 100], ticksuffix=" %"),
         xaxis=get_log_xaxis_config(x_plot_min, x_plot_max, tickvals, ticktext),
