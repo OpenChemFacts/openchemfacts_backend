@@ -217,6 +217,7 @@ def get_cas_data(cas: str):
         - Kingdom: Chemical kingdom
         - Superclass: Chemical superclass
         - Class: Chemical class
+        - EffectFactor(s): List of dictionaries with Source and EF (maximum 3 entries)
         
     Raises:
         HTTPException: 404 if the substance is not found
@@ -248,6 +249,26 @@ def get_cas_data(cas: str):
                 data_record[field] = None
             else:
                 data_record[field] = value
+        
+        # Build EffectFactor(s) list from all available sources for this CAS
+        effect_factors = []
+        for _, row in substance_data.iterrows():
+            source = row["Source"]
+            ef_value = row["EF"]
+            
+            # Handle NaN values for EF
+            if pd.isna(ef_value):
+                ef_value = None
+            else:
+                ef_value = float(ef_value)
+            
+            effect_factors.append({
+                "Source": str(source),
+                "EF": ef_value
+            })
+        
+        # Add EffectFactor(s) to the response
+        data_record["EffectFactor(s)"] = effect_factors
         
         return data_record
     except HTTPException:

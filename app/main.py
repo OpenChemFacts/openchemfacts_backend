@@ -31,13 +31,20 @@ logger.info(f"Python version: {sys.version}")
 # Configuration CORS (Cross-Origin Resource Sharing)
 # Permet au frontend d'appeler l'API depuis différents domaines
 # 
-# Configuration par défaut :
+# Configuration par défaut (utilisée si ALLOWED_ORIGINS n'est pas définie) :
 # - Autorise les domaines de production (openchemfacts.com, lovableproject.com)
 # - Autorise localhost pour le développement
 # 
-# Personnalisation :
-# - Définir la variable d'environnement ALLOWED_ORIGINS (séparer par des virgules)
-# - Exemple : export ALLOWED_ORIGINS=https://example.com,https://www.example.com
+# ⚠️ IMPORTANT - Configuration en production (Scalingo) :
+# La liste des origines autorisées doit être définie via la variable d'environnement
+# ALLOWED_ORIGINS sur Scalingo, PAS dans le code source.
+# 
+# Pour configurer sur Scalingo :
+#   scalingo env-set ALLOWED_ORIGINS=https://openchemfacts.com,https://www.openchemfacts.com
+# 
+# Pour le développement local :
+#   export ALLOWED_ORIGINS=https://example.com,https://www.example.com
+#   (ou définir dans votre IDE/environnement de développement)
 allowed_origins_str = os.getenv(
     "ALLOWED_ORIGINS",
     "https://openchemfacts.com,https://openchemfacts.lovable.app,https://lovableproject.com,http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
