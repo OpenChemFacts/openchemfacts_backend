@@ -146,24 +146,16 @@ def resolve_cas_from_identifier(identifier: str) -> str:
 @router.get("/summary")
 def get_summary():
     """
-    Get a summary of the available benchmark data.
+    Get a summary of available results in OpenChemFacts database.
     
-    Returns:
-        Dictionary containing:
-        - rows: Total number of data rows
-        - columns: Total number of columns
-        - columns_names: List of all column names
-        
-    Raises:
-        HTTPException: 404 if no data is available
+    Returns a dictionary containing:\n
+            - chemicals: Total number of CAS with a calculated effect factor (EF)
+            - EF_openchemfacts(calculated): Total number of EF calculated by OpenChemFacts
+            - EF_usetox(official): Total number of EF officially provided by USETOX
+            - EF_ef3.1(official): Total number of EF officially provided by EF 3.1
     """
+    
     df = load_benchmark_data()
-
-    # Vérifier que les données existent
-    if df.empty:
-        raise HTTPException(status_code=404, detail="Aucune donnée")
-
-    # Retourner les statistiques de base
     return {
         "chemicals": int(df["cas_number"].nunique()),
         "EF_openchemfacts(calculated)": int((df["Source"] == "OpenChemFacts 0.1").sum()),
@@ -171,13 +163,12 @@ def get_summary():
         "EF_ef3.1(official)": int((df["Source"] == "EF 3.1").sum()),
     }
 
-@router.get("/cas/list")
-def get_cas_list():
+@router.get("/list")
+def get_list():
     """
-    Get list of all available CAS numbers with their chemical names from benchmark data.
-    
-    Returns:
-        List of dictionaries, each containing cas_number and name
+    Get list of all available chemicals in the database.
+
+    Returns a list of dictionaries with CAS + INCHIKEY + NAME
     """
     df = load_benchmark_data()
     
@@ -188,28 +179,22 @@ def get_cas_list():
         for _, row in cas_data.iterrows()
     ]
 
-
 @router.get("/cas/{cas}")
 def get_cas_data(cas: str):
     """
-    Get benchmark data for a specific substance identified by CAS number.
-    Returns a single entry (first match) from the benchmark data.
-    
+    Compile available effect factors (EF) for a specific chemical.
+
     Args:
         cas: CAS number of the substance
         
-    Returns:
-        Dictionary containing the benchmark data for the substance:
+    Returns a dictionary containing:\n
         - cas_number: CAS number of the substance
         - name: Chemical name
-        - INCHIKEY: INCHI key
-        - Kingdom: Chemical kingdom
-        - Superclass: Chemical superclass
-        - Class: Chemical class
-        - EffectFactor(s): List of dictionaries with Source and EF (maximum 3 entries)
-        
-    Raises:
-        HTTPException: 404 if the substance is not found
+        - INCHIKEY: INCHIKEY of the chemical
+        - Kingdom: Classyfire classification kingdom
+        - Superclass: Classyfire classification superclass
+        - Class: Classyfire classification class
+        - EffectFactor(s): List of dictionaries with Source and EF
     """
     try:
         # Load benchmark data
