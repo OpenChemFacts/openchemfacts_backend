@@ -139,7 +139,7 @@ def root(_request: Request):
             "documentation": "/docs",
             "redoc": "/redoc",
             "api_summary": "/api/summary",
-            "api_cas_list": "/api/cas/list",
+            "api_cas": "/api/cas/{cas}",
             "api_search": "/api/search?query={query}&limit={limit}",
             "api_plot_ssd": "/api/plot/ssd/{identifier}",
             "api_plot_ec10eq": "/api/plot/ec10eq/{identifier}",

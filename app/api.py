@@ -503,32 +503,6 @@ def get_summary(_request: Request):
     except Exception as e:
         raise handle_data_errors(e, "summary data")
 
-@router.get("/list")
-@apply_rate_limit("60/minute")
-def get_list(_request: Request):
-    """
-    Get list of all available chemicals in the database.
-
-    Returns:
-        JSON array of dictionaries, each containing:\n
-        - cas_number: CAS number
-        - INCHIKEY: INCHIKEY identifier
-        - name: Chemical name
-    """
-    try:
-        df = load_and_validate_benchmark_data(["cas_number", "INCHIKEY", "name"])
-        
-        cas_data = df[["cas_number", "INCHIKEY", "name"]].drop_duplicates(subset=["cas_number", "INCHIKEY"])
-        
-        return [
-            {"cas_number": str(row["cas_number"]), "INCHIKEY": str(row["INCHIKEY"]), "name": str(row["name"])}
-            for _, row in cas_data.iterrows()
-        ]
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise handle_data_errors(e, "chemical list")
-
 @router.get("/cas/{cas}")
 @apply_rate_limit("60/minute")
 def get_cas_data(cas: str, _request: Request):
