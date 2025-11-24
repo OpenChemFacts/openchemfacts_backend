@@ -341,15 +341,11 @@ def search_substances(
 
 
 @router.get("/plot/ssd/{cas}")
-def get_ssd_plot(
-    cas: str,
-    width: int = Query(None, ge=200, le=3000, description="Plot width in pixels (default: 1600)"),
-    height: int = Query(None, ge=200, le=3000, description="Plot height in pixels (default: 900)")
-):
+def get_ssd_plot(cas: str):
     """
     Get SSD (Species Sensitivity Distribution) data for a single chemical in JSON format.
     
-    Returns all the data used to generate the SSD curve, including:
+    Returns all the data needed to generate the SSD plot, including:
     - SSD parameters (mu, sigma, HC20)
     - Chemical information (name, number of species, trophic groups)
     - Species data (EC10eq values, species names, trophic groups)
@@ -357,8 +353,6 @@ def get_ssd_plot(
     
     Args:
         cas: CAS number (e.g., "107-05-1")
-        width: Optional plot width in pixels (200-3000, default: 1600) - deprecated, kept for compatibility
-        height: Optional plot height in pixels (200-3000, default: 900) - deprecated, kept for compatibility
         
     Returns:
         JSON object containing SSD data structured as:
@@ -391,22 +385,13 @@ def get_ssd_plot(
         # Load data
         df = load_data()
         
-        # Validate CAS exists
-        if cas not in df['cas_number'].values:
-            raise HTTPException(
-                status_code=404,
-                detail=f"CAS {cas} not found in database."
-            )
-        
         # Import and use the function from plot_ssd_curve
-        from data.plot_ssd_curve import get_ssd_data
+        from data.graph.SSD.plot_ssd_curve import get_ssd_data
         
-        # Get SSD data
+        # Get SSD data (get_ssd_data handles CAS validation internally)
         ssd_data = get_ssd_data(df, cas)
         
         return ssd_data
-    except HTTPException:
-        raise
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -572,7 +557,7 @@ def get_ssd_comparison(request: ComparisonRequest):
                 )
         
         # Import and use the function from plot_ssd_curve (same as /plot/ssd/{cas})
-        from data.plot_ssd_curve import get_ssd_data
+        from data.graph.SSD.plot_ssd_curve import get_ssd_data
         
         # Get SSD data for each CAS
         comparison_data = []
