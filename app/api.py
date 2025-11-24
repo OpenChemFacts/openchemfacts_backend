@@ -8,7 +8,7 @@ This module defines all the API endpoints including:
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List
-from .data_loader import load_data, load_data_polars, load_benchmark_data
+from .data_loader import load_data, load_data_polars, load_benchmark_data, DATA_PATH_ec10eq
 import sys
 from pathlib import Path
 import pandas as pd
@@ -61,9 +61,9 @@ class ComparisonRequest(BaseModel):
     Request model for SSD comparison endpoint.
     
     Attributes:
-        cas_list: List of CAS numbers or chemical names to compare (maximum 3)
-        width: Optional plot width in pixels (200-3000, default: 1600)
-        height: Optional plot height in pixels (200-3000, default: 900)
+        cas_list: List of CAS numbers or chemical names to compare (between 2 and 5)
+        width: Optional plot width in pixels (200-3000, default: 1600) - deprecated
+        height: Optional plot height in pixels (200-3000, default: 900) - deprecated
     """
     cas_list: List[str]
     width: int = None
@@ -413,113 +413,179 @@ def get_ssd_plot(
         raise HTTPException(status_code=500, detail=f"Error retrieving SSD data: {str(e)}")
 
 
-@router.get("/plot/ec10eq/{identifier}")
+@router.get("/plot/ec10eq/{cas}")
 def get_ec10eq_plot(
-    identifier: str,
-    width: int = Query(None, ge=200, le=3000, description="Plot width in pixels (default: 1000)"),
-    height: int = Query(None, ge=200, le=2000, description="Plot height in pixels (default: 600)")
+    cas: str,
+    output_format: str = Query("detailed", description="Format de sortie: 'detailed' ou 'simple'"),
+    width: int = Query(None, ge=200, le=3000, description="Plot width in pixels (default: 1000) - deprecated"),
+    height: int = Query(None, ge=200, le=2000, description="Plot height in pixels (default: 600) - deprecated")
 ):
     """
-    Generate EC10eq results plot organized by taxa and species.
+    Get EC10eq data for a single chemical in JSON format.
+    
+    Returns EC10eq data organized by trophic group and species, including:
+    - Chemical information (CAS, name)
+    - Data organized by trophic groups and species
+    - Individual endpoints with EC10eq values, test_id, year, and author
     
     Args:
-        identifier: CAS number or chemical name (case-insensitive, partial match supported)
-        width: Optional plot width in pixels (200-3000, default: 1000)
-        height: Optional plot height in pixels (200-2000, default: 600)
+        cas: CAS number (e.g., "60-51-5")
+        output_format: Output format - 'detailed' (default) or 'simple'
+        width: Optional plot width in pixels (200-3000, default: 1000) - deprecated, kept for compatibility
+        height: Optional plot height in pixels (200-2000, default: 600) - deprecated, kept for compatibility
         
     Returns:
-        JSON representation of the Plotly figure
+        JSON object containing EC10eq data structured as:
+        {
+            "cas": str,
+            "chemical_name": str,
+            "trophic_groups": {
+                "trophic_group_name": {
+                    "species_name": [
+                        {
+                            "EC10eq": float,
+                            "test_id": int,
+                            "year": int,
+                            "author": str
+                        }
+                    ]
+                }
+            }
+        }
+        Or in 'simple' format:
+        {
+            "cas": str,
+            "chemical_name": str,
+            "endpoints": [
+                {
+                    "trophic_group": str,
+                    "species": str,
+                    "EC10eq": float,
+                    "test_id": int,
+                    "year": int,
+                    "author": str
+                }
+            ]
+        }
     """
-    _, plot_ec10eq_by_taxa_and_species, _ = _load_plotting_functions()
-    if plot_ec10eq_by_taxa_and_species is None:
-        raise HTTPException(
-            status_code=503, 
-            detail="Plotting functions not available. Please check dependencies."
-        )
-    
     try:
-        # Resolve identifier to CAS number
-        cas = resolve_cas_from_identifier(identifier)
+        # Import the function from EC10eq_details
+        from data.EC10eq_details import get_ec10eq_data_json
         
-        # Create custom config if dimensions are provided
-        config = None
-        if width is not None or height is not None:
-            from data.plotting_functions import PlotConfig
-            config = PlotConfig()
-            if width is not None:
-                config.plot_width = width
-            if height is not None:
-                config.plot_height = height
+        # Get EC10eq data using the data path from data_loader
+        ec10eq_data = get_ec10eq_data_json(cas, data_path=str(DATA_PATH_ec10eq), format=output_format)
         
-        df_params = load_data_polars()
-        # Use the loaded function
-        fig = plot_ec10eq_by_taxa_and_species(df_params, cas, config=config)
-        return fig.to_dict()
+        return ec10eq_data
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating plot: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving EC10eq data: {str(e)}")
 
 
 @router.post("/plot/ssd/comparison")
 def get_ssd_comparison(request: ComparisonRequest):
     """
-    Create a comparison plot with multiple SSD curves superposed.
+    Get SSD (Species Sensitivity Distribution) data for multiple chemicals in JSON format.
+    
+    Returns all the data used to generate SSD curves for comparison, including:
+    - SSD parameters (mu, sigma, HC20) for each chemical
+    - Chemical information (name, number of species, trophic groups) for each chemical
+    - Species data (EC10eq values, species names, trophic groups) for each chemical
+    - SSD curve points (concentrations and corresponding affected species percentages) for each chemical
+    
+    Uses the same logic as /plot/ssd/{cas} but for multiple chemicals (2 to 5).
     
     Args:
         request: Request body containing:
-                - cas_list: List of CAS numbers or chemical names (maximum 3)
-                - width: Optional plot width in pixels (200-3000, default: 1600)
-                - height: Optional plot height in pixels (200-3000, default: 900)
+                - cas_list: List of CAS numbers or chemical names (between 2 and 5)
+                - width: Optional plot width in pixels (200-3000, default: 1600) - deprecated, kept for compatibility
+                - height: Optional plot height in pixels (200-3000, default: 900) - deprecated, kept for compatibility
                 Each identifier can be a CAS number or chemical name (case-insensitive, partial match supported)
         
     Returns:
-        JSON representation of the Plotly figure (responsive and auto-sized)
+        JSON object containing SSD data for all chemicals structured as:
+        {
+            "comparison": [
+                {
+                    "cas_number": str,
+                    "chemical_name": str,
+                    "ssd_parameters": {
+                        "mu_logEC10eq": float,
+                        "sigma_logEC10eq": float,
+                        "hc20_mgL": float
+                    },
+                    "summary": {
+                        "n_species": int,
+                        "n_ecotox_group": int
+                    },
+                    "species_data": [
+                        {
+                            "species_name": str,
+                            "ec10eq_mgL": float,
+                            "trophic_group": str
+                        }
+                    ],
+                    "ssd_curve": {
+                        "concentrations_mgL": [float],
+                        "affected_species_percent": [float]
+                    } or None
+                }
+            ]
+        }
     """
-    _, _, plot_ssd_comparison = _load_plotting_functions()
-    if plot_ssd_comparison is None:
-        raise HTTPException(
-            status_code=503, 
-            detail="Plotting functions not available. Please check dependencies."
-        )
-    
-    if len(request.cas_list) == 0:
-        raise HTTPException(status_code=400, detail="At least one CAS number or chemical name must be provided")
-    
-    if len(request.cas_list) > 3:
+    if len(request.cas_list) < 2:
         raise HTTPException(
             status_code=400, 
-            detail=f"Maximum 3 substances can be compared. Provided: {len(request.cas_list)}"
+            detail=f"At least 2 substances must be provided for comparison. Provided: {len(request.cas_list)}"
         )
     
-    # Validate dimensions if provided
+    if len(request.cas_list) > 5:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Maximum 5 substances can be compared. Provided: {len(request.cas_list)}"
+        )
+    
+    # Validate dimensions if provided (deprecated but kept for compatibility)
     if request.width is not None and (request.width < 200 or request.width > 3000):
         raise HTTPException(status_code=400, detail="Width must be between 200 and 3000 pixels")
     if request.height is not None and (request.height < 200 or request.height > 3000):
         raise HTTPException(status_code=400, detail="Height must be between 200 and 3000 pixels")
     
     try:
+        # Load data
+        df = load_data()
+        
         # Resolve all identifiers to CAS numbers
         resolved_cas_list = []
         for identifier in request.cas_list:
             cas = resolve_cas_from_identifier(identifier)
             resolved_cas_list.append(cas)
         
-        # Create custom config if dimensions are provided
-        config = None
-        if request.width is not None or request.height is not None:
-            from data.plotting_functions import PlotConfig
-            config = PlotConfig()
-            if request.width is not None:
-                config.plot_width = request.width
-            if request.height is not None:
-                config.plot_height = request.height
+        # Validate all CAS exist in database
+        for cas in resolved_cas_list:
+            if cas not in df['cas_number'].values:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"CAS {cas} not found in database."
+                )
         
-        df_params = load_data_polars()
-        # Use the loaded function
-        fig = plot_ssd_comparison(df_params, resolved_cas_list, config=config)
-        return fig.to_dict()
+        # Import and use the function from plot_ssd_curve (same as /plot/ssd/{cas})
+        from data.plot_ssd_curve import get_ssd_data
+        
+        # Get SSD data for each CAS
+        comparison_data = []
+        for cas in resolved_cas_list:
+            ssd_data = get_ssd_data(df, cas)
+            comparison_data.append(ssd_data)
+        
+        return {
+            "comparison": comparison_data
+        }
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating plot: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving SSD comparison data: {str(e)}")

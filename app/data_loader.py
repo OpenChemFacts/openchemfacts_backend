@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 # Path to the data file
 # Note: Update this path if your data file has a different name or location
 DATA_PATH_ssd = Path(__file__).resolve().parent.parent / "data" / "results_ecotox_ssd.parquet"
+DATA_PATH_ec10eq = Path(__file__).resolve().parent.parent / "data" / "results_ecotox_EC10_list_per_species.parquet"
 DATA_PATH_benchmark = Path(__file__).resolve().parent.parent / "data" / "results_EF_benchmark.parquet"
 
 @lru_cache(maxsize=1)
