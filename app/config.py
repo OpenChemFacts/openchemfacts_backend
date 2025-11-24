@@ -26,6 +26,7 @@ API_DESCRIPTION = "API for accessing ecotoxicology data and generating scientifi
 # Default allowed origins (can be overridden with ALLOWED_ORIGINS environment variable)
 DEFAULT_ALLOWED_ORIGINS = [
     "https://openchemfacts.com",
+    "https://www.openchemfacts.com",
     "https://openchemfacts.lovable.app",
     "https://lovableproject.com",
     "http://localhost:3000",
@@ -35,7 +36,8 @@ DEFAULT_ALLOWED_ORIGINS = [
 ]
 
 # Regex patterns for CORS
-LOVABLE_REGEX = r"https://.*\.lovableproject\.com"
+LOVABLE_APP_REGEX = r"https://.*\.lovable\.app"
+LOVABLEPROJECT_REGEX = r"https://.*\.lovableproject\.com"
 LOCALHOST_REGEX = r"http://localhost:\d+|http://127\.0\.0\.1:\d+"
 
 
@@ -61,9 +63,9 @@ def get_cors_regex() -> str:
     Get CORS regex pattern for dynamic origins.
     
     Returns:
-        Combined regex pattern for lovableproject.com and localhost
+        Combined regex pattern for lovable.app, lovableproject.com and localhost
     """
-    return f"{LOVABLE_REGEX}|{LOCALHOST_REGEX}"
+    return f"{LOVABLE_APP_REGEX}|{LOVABLEPROJECT_REGEX}|{LOCALHOST_REGEX}"
 
 
 # Server Configuration

@@ -32,7 +32,8 @@ logger.info(f"Python version: {sys.version}")
 # Permet au frontend d'appeler l'API depuis différents domaines
 # 
 # Configuration par défaut (utilisée si ALLOWED_ORIGINS n'est pas définie) :
-# - Autorise les domaines de production (openchemfacts.com, lovableproject.com)
+# - Autorise les domaines de production (openchemfacts.com, www.openchemfacts.com)
+# - Autorise les domaines Lovable (*.lovable.app et *.lovableproject.com via regex)
 # - Autorise localhost pour le développement
 # 
 # ⚠️ IMPORTANT - Configuration en production (Scalingo) :
@@ -47,14 +48,16 @@ logger.info(f"Python version: {sys.version}")
 #   (ou définir dans votre IDE/environnement de développement)
 allowed_origins_str = os.getenv(
     "ALLOWED_ORIGINS",
-    "https://openchemfacts.com,https://openchemfacts.lovable.app,https://lovableproject.com,http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
+    "https://openchemfacts.com,https://www.openchemfacts.com,https://openchemfacts.lovable.app,https://lovableproject.com,http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
 )
 allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
 
 # Regex pour autoriser automatiquement :
+# - Tous les sous-domaines de lovable.app (domaines Lovable en production)
 # - Tous les sous-domaines de lovableproject.com
 # - Tous les ports de localhost (pour le développement)
-lovable_regex = r"https://.*\.lovableproject\.com"
+lovable_app_regex = r"https://.*\.lovable\.app"
+lovableproject_regex = r"https://.*\.lovableproject\.com"
 localhost_regex = r"http://localhost:\d+|http://127\.0\.0\.1:\d+"
 
 logger.info(f"CORS allowed origins: {allowed_origins}")
@@ -63,7 +66,7 @@ logger.info(f"CORS allowed origins: {allowed_origins}")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_origin_regex=f"{lovable_regex}|{localhost_regex}",
+    allow_origin_regex=f"{lovable_app_regex}|{lovableproject_regex}|{localhost_regex}",
     allow_credentials=True,
     allow_methods=["*"],  # Autorise toutes les méthodes HTTP (GET, POST, etc.)
     allow_headers=["*"],  # Autorise tous les headers
