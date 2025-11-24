@@ -3,15 +3,24 @@ Main application file for OpenChemFacts Backend API.
 
 This module creates and configures the FastAPI application, including:
 - CORS configuration for frontend access
+- Security middleware (rate limiting, security headers, request size limits)
 - API route registration
 - Health check and root endpoints
 """
 import os
 import sys
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 from . import api
+from .middleware import (
+    SecurityHeadersMiddleware,
+    RequestSizeLimitMiddleware,
+    SecurityLoggingMiddleware
+)
+from .security import limiter, RATE_LIMIT_ENABLED, RATE_LIMIT_HEALTH_PER_MINUTE
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +32,29 @@ app = FastAPI(
     version="0.1.0",
     description="API for accessing ecotoxicology data and generating scientific visualizations",
 )
+
+# Initialize rate limiter
+app.state.limiter = limiter
+
+# Add rate limit exception handler
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    """
+    Handle rate limit exceeded errors.
+    
+    Returns a 429 Too Many Requests response with retry-after information.
+    """
+    response = JSONResponse(
+        status_code=429,
+        content={
+            "detail": "Rate limit exceeded. Please try again later.",
+            "retry_after": exc.retry_after
+        }
+    )
+    response = request.app.state.limiter._inject_headers(
+        response, request.state.view_rate_limit
+    )
+    return response
 
 # Log au démarrage pour le débogage
 logger.info("Starting OpenChemFacts API")
@@ -62,6 +94,16 @@ localhost_regex = r"http://localhost:\d+|http://127\.0\.0\.1:\d+"
 
 logger.info(f"CORS allowed origins: {allowed_origins}")
 
+# Add security middleware (order matters - add before CORS)
+# Security logging should be first to log all requests
+app.add_middleware(SecurityLoggingMiddleware)
+
+# Request size limiting
+app.add_middleware(RequestSizeLimitMiddleware)
+
+# Security headers
+app.add_middleware(SecurityHeadersMiddleware)
+
 # Ajouter le middleware CORS à l'application
 app.add_middleware(
     CORSMiddleware,
@@ -78,7 +120,8 @@ app.include_router(api.router, prefix="/api", tags=["api"])
 
 
 @app.get("/")
-def root():
+@limiter.limit(f"{RATE_LIMIT_HEALTH_PER_MINUTE}/minute") if RATE_LIMIT_ENABLED else lambda f: f
+def root(_request: Request):
     """
     Root endpoint providing API information and available endpoints.
     
@@ -106,7 +149,8 @@ def root():
 
 
 @app.get("/health")
-def health():
+@limiter.limit(f"{RATE_LIMIT_HEALTH_PER_MINUTE}/minute") if RATE_LIMIT_ENABLED else lambda f: f
+def health(_request: Request):
     """
     Health check endpoint to verify API and data availability.
     

@@ -7,13 +7,22 @@ This module defines all the API endpoints including:
 
 Note: This API returns only JSON data, not graphs or visualizations.
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 from typing import List
 from .data_loader import load_data, load_benchmark_data, DATA_PATH_ec10eq
+from .security import limiter
 import sys
 from pathlib import Path
 import pandas as pd
+
+# Rate limiting decorators - apply conditionally
+def apply_rate_limit(limit_str: str):
+    """Apply rate limiting decorator if enabled."""
+    from .security import RATE_LIMIT_ENABLED
+    if RATE_LIMIT_ENABLED:
+        return limiter.limit(limit_str)
+    return lambda f: f
 
 # Add data directory to path for importing data processing functions
 data_dir = Path(__file__).resolve().parent.parent / "data"
@@ -120,12 +129,24 @@ def validate_columns(dataframe: pd.DataFrame, required_columns: List[str], data_
     Raises:
         HTTPException: If any required columns are missing
     """
+    import os
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    is_production = os.getenv("ENVIRONMENT", "development").lower() == "production"
+    
     missing_columns = [col for col in required_columns if col not in dataframe.columns]
     if missing_columns:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Missing required columns in {data_type}: {', '.join(missing_columns)}"
-        )
+        # Log detailed error server-side
+        logger.error(f"Missing required columns in {data_type}: {', '.join(missing_columns)}")
+        
+        # Return sanitized error message
+        if is_production:
+            detail = "Data structure error. Please contact support."
+        else:
+            detail = f"Missing required columns in {data_type}: {', '.join(missing_columns)}"
+        
+        raise HTTPException(status_code=500, detail=detail)
 
 
 def handle_data_errors(
@@ -137,6 +158,9 @@ def handle_data_errors(
     """
     Handle common data-related errors and return appropriate HTTPException.
     
+    Sanitizes error messages to avoid information disclosure in production.
+    Detailed errors are logged server-side only.
+    
     Args:
         error: The exception that was raised
         context: Context description for error messages (e.g., "benchmark data", "SSD data")
@@ -144,42 +168,78 @@ def handle_data_errors(
         query: Optional query string for search-related errors
         
     Returns:
-        HTTPException with appropriate status code and detail message
+        HTTPException with appropriate status code and sanitized detail message
     """
+    import logging
+    import os
+    
+    logger = logging.getLogger(__name__)
+    is_production = os.getenv("ENVIRONMENT", "development").lower() == "production"
+    
+    # Log detailed error server-side
+    logger.error(
+        f"Error in {context}: {type(error).__name__}: {str(error)}"
+        + (f" (CAS: {cas})" if cas else "")
+        + (f" (Query: {query})" if query else ""),
+        exc_info=True
+    )
+    
     if isinstance(error, HTTPException):
+        # If it's already an HTTPException, sanitize the detail if in production
+        if is_production and error.status_code >= 500:
+            return HTTPException(
+                status_code=error.status_code,
+                detail="An internal server error occurred. Please try again later."
+            )
         return error
     
     if isinstance(error, FileNotFoundError):
-        detail = f"{context.capitalize()} file not found: {str(error)}"
+        # Don't expose file paths in production
+        if is_production:
+            detail = "Data file not available. Please contact support."
+        else:
+            detail = f"{context.capitalize()} file not found: {str(error)}"
         return HTTPException(status_code=500, detail=detail)
     
     if isinstance(error, KeyError):
-        if cas:
-            detail = f"Missing required column in {context} for CAS '{cas}': {str(error)}"
+        # Don't expose internal column names in production
+        if is_production:
+            detail = "Data structure error. Please contact support."
         else:
-            detail = f"Missing required column in {context}: {str(error)}"
+            if cas:
+                detail = f"Missing required column in {context} for CAS '{cas}': {str(error)}"
+            else:
+                detail = f"Missing required column in {context}: {str(error)}"
         return HTTPException(status_code=500, detail=detail)
     
     if isinstance(error, ValueError):
+        # User-facing errors can be more specific
         if cas:
-            detail = f"{context.capitalize()} not found for CAS '{cas}': {str(error)}"
+            detail = f"Data not found for the specified identifier."
         elif query:
-            detail = f"Error searching for query '{query}': {str(error)}"
+            detail = f"No results found for your search query."
         else:
-            detail = f"Error in {context}: {str(error)}"
+            detail = f"Invalid request. Please check your parameters."
         return HTTPException(status_code=404, detail=detail)
     
     if isinstance(error, ImportError):
-        detail = f"Failed to import {context} processing module: {str(error)}"
+        # Don't expose import errors in production
+        if is_production:
+            detail = "Service temporarily unavailable. Please try again later."
+        else:
+            detail = f"Failed to import {context} processing module: {str(error)}"
         return HTTPException(status_code=500, detail=detail)
     
-    # Generic error
-    if cas:
-        detail = f"Error retrieving {context} for CAS '{cas}': {str(error)}"
-    elif query:
-        detail = f"Error searching for query '{query}': {str(error)}"
+    # Generic error - sanitize in production
+    if is_production:
+        detail = "An error occurred while processing your request. Please try again later."
     else:
-        detail = f"Error retrieving {context}: {str(error)}"
+        if cas:
+            detail = f"Error retrieving {context} for CAS '{cas}': {str(error)}"
+        elif query:
+            detail = f"Error searching for query '{query}': {str(error)}"
+        else:
+            detail = f"Error retrieving {context}: {str(error)}"
     return HTTPException(status_code=500, detail=detail)
 
 
@@ -244,6 +304,109 @@ class ComparisonRequest(BaseModel):
         cas_list: List of CAS numbers or chemical names to compare (between 2 and 5)
     """
     cas_list: List[str]
+    
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Validate list size
+        if len(self.cas_list) < 2:
+            raise ValueError("At least 2 substances must be provided for comparison")
+        if len(self.cas_list) > 5:
+            raise ValueError("Maximum 5 substances can be compared")
+        # Validate each identifier length
+        for identifier in self.cas_list:
+            if not isinstance(identifier, str) or len(identifier.strip()) == 0:
+                raise ValueError("All identifiers must be non-empty strings")
+            if len(identifier) > 200:  # Prevent extremely long strings
+                raise ValueError("Identifier too long (max 200 characters)")
+
+
+def validate_cas_number(cas: str) -> str:
+    """
+    Validate and sanitize CAS number input.
+    
+    Args:
+        cas: CAS number string
+        
+    Returns:
+        Sanitized CAS number
+        
+    Raises:
+        HTTPException: If CAS number is invalid
+    """
+    if not cas or not isinstance(cas, str):
+        raise HTTPException(
+            status_code=400,
+            detail="CAS number must be a non-empty string"
+        )
+    
+    cas_clean = cas.strip()
+    
+    # Basic length validation
+    if len(cas_clean) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="CAS number cannot be empty"
+        )
+    
+    if len(cas_clean) > 50:  # Prevent extremely long strings
+        raise HTTPException(
+            status_code=400,
+            detail="CAS number is too long"
+        )
+    
+    # Basic pattern validation (CAS numbers typically have format: NNNNN-NN-N)
+    # But we allow more flexibility for partial matches
+    # Just check for potentially dangerous characters
+    if any(char in cas_clean for char in ['<', '>', '"', "'", '&', '\x00']):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid characters in CAS number"
+        )
+    
+    return cas_clean
+
+
+def validate_search_query(query: str) -> str:
+    """
+    Validate and sanitize search query input.
+    
+    Args:
+        query: Search query string
+        
+    Returns:
+        Sanitized query string
+        
+    Raises:
+        HTTPException: If query is invalid
+    """
+    if not query or not isinstance(query, str):
+        raise HTTPException(
+            status_code=400,
+            detail="Search query must be a non-empty string"
+        )
+    
+    query_clean = query.strip()
+    
+    if len(query_clean) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Search query cannot be empty"
+        )
+    
+    if len(query_clean) > 200:  # Prevent extremely long queries
+        raise HTTPException(
+            status_code=400,
+            detail="Search query is too long (max 200 characters)"
+        )
+    
+    # Check for potentially dangerous characters
+    if any(char in query_clean for char in ['<', '>', '"', "'", '&', '\x00']):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid characters in search query"
+        )
+    
+    return query_clean
 
 
 def resolve_cas_from_identifier(identifier: str, dataframe: pd.DataFrame = None) -> str:
@@ -315,7 +478,8 @@ def resolve_cas_from_identifier(identifier: str, dataframe: pd.DataFrame = None)
 
 
 @router.get("/summary")
-def get_summary():
+@apply_rate_limit("60/minute")
+def get_summary(_request: Request):
     """
     Get a summary of available results in OpenChemFacts database.
     
@@ -340,7 +504,8 @@ def get_summary():
         raise handle_data_errors(e, "summary data")
 
 @router.get("/list")
-def get_list():
+@apply_rate_limit("60/minute")
+def get_list(_request: Request):
     """
     Get list of all available chemicals in the database.
 
@@ -365,7 +530,8 @@ def get_list():
         raise handle_data_errors(e, "chemical list")
 
 @router.get("/cas/{cas}")
-def get_cas_data(cas: str):
+@apply_rate_limit("60/minute")
+def get_cas_data(cas: str, _request: Request):
     """
     Compile available effect factors (EF) for a specific chemical.
 
@@ -382,6 +548,8 @@ def get_cas_data(cas: str):
         - Class: Classyfire classification class
         - EffectFactor(s): List of dictionaries with Source and EF
     """
+    # Validate CAS number input
+    cas = validate_cas_number(cas)
     try:
         df_benchmark = load_and_validate_benchmark_data(["cas_number", "name", "INCHIKEY", "Kingdom", "Superclass", "Class", "Source", "EF"])
         substance_data = df_benchmark[df_benchmark["cas_number"] == cas]
@@ -425,9 +593,11 @@ def get_cas_data(cas: str):
 
 
 @router.get("/search")
+@apply_rate_limit("60/minute")
 def search_substances(
     query: str = Query(..., description="Search term (CAS number or chemical name, partial match supported)"),
-    limit: int = Query(20, ge=1, le=100, description="Maximum number of results to return")
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of results to return"),
+    _request: Request = None
 ):
     """
     Search for substances by CAS number or chemical name.
@@ -451,15 +621,10 @@ def search_substances(
           - name: Chemical name
     """
     try:
+        # Validate and sanitize query
+        query_clean = validate_search_query(query)
+        
         df = load_and_validate_ssd_data(["cas_number", "chemical_name"])
-        
-        query_clean = query.strip()
-        
-        if not query_clean:
-            raise HTTPException(
-                status_code=400,
-                detail="Search query cannot be empty"
-            )
         
         # Helper function to format results
         def format_matches(results_df):
@@ -507,7 +672,8 @@ def search_substances(
 
 
 @router.get("/plot/ssd/{cas}")
-def get_ssd_plot(cas: str):
+@apply_rate_limit("10/minute")
+def get_ssd_plot(cas: str, _request: Request):
     """
     Get SSD (Species Sensitivity Distribution) data for a single chemical in JSON format.
     
@@ -523,6 +689,8 @@ def get_ssd_plot(cas: str):
         - species_data: List of species data
         - ssd_curve: SSD curve points (concentrations and affected species percentages)
     """
+    # Validate CAS number input
+    cas = validate_cas_number(cas)
     try:
         df = load_and_validate_ssd_data()
         
@@ -544,7 +712,8 @@ def get_ssd_plot(cas: str):
 
 
 @router.get("/plot/ec10eq/{cas}")
-def get_ec10eq_plot(cas: str):
+@apply_rate_limit("10/minute")
+def get_ec10eq_plot(cas: str, _request: Request):
     """
     List all calculated EC10eq results per species and trophic group in JSON format.
 
@@ -557,7 +726,9 @@ def get_ec10eq_plot(cas: str):
         - chemical_name: Chemical name
         - trophic_groups: Nested structure by trophic_group -> species -> endpoints
           Each endpoint contains EC10eq, test_id, year, and author
-    """ 
+    """
+    # Validate CAS number input
+    cas = validate_cas_number(cas) 
     try:
         # Import data processing function (cached after first call)
         get_ec10eq_data = _get_ec10eq_data_function()
@@ -575,7 +746,8 @@ def get_ec10eq_plot(cas: str):
 
 
 @router.post("/plot/ssd/comparison")
-def get_ssd_comparison(request: ComparisonRequest):
+@apply_rate_limit("10/minute")
+def get_ssd_comparison(request_body: ComparisonRequest, _request: Request):
     """
     Get SSD (Species Sensitivity Distribution) data for multiple chemicals in JSON format.
     
@@ -593,16 +765,16 @@ def get_ssd_comparison(request: ComparisonRequest):
         JSON object containing SSD data for all chemicals.
     """
     # API-level validation
-    if len(request.cas_list) < 2:
+    if len(request_body.cas_list) < 2:
         raise HTTPException(
             status_code=400, 
-            detail=f"At least 2 substances must be provided for comparison. Provided: {len(request.cas_list)}"
+            detail=f"At least 2 substances must be provided for comparison. Provided: {len(request_body.cas_list)}"
         )
     
-    if len(request.cas_list) > 5:
+    if len(request_body.cas_list) > 5:
         raise HTTPException(
             status_code=400, 
-            detail=f"Maximum 5 substances can be compared. Provided: {len(request.cas_list)}"
+            detail=f"Maximum 5 substances can be compared. Provided: {len(request_body.cas_list)}"
         )
     
     try:
@@ -613,7 +785,7 @@ def get_ssd_comparison(request: ComparisonRequest):
         resolved_cas_list = []
         invalid_identifiers = []
         
-        for identifier in request.cas_list:
+        for identifier in request_body.cas_list:
             try:
                 resolved_cas = resolve_cas_from_identifier(identifier, dataframe=df)
                 resolved_cas_list.append(resolved_cas)

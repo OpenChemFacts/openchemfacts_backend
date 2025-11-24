@@ -75,3 +75,19 @@ DEFAULT_PORT = 8000
 # Logging Configuration
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
+# Security Configuration
+# Rate Limiting
+RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
+RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
+RATE_LIMIT_PLOT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PLOT_PER_MINUTE", "10"))
+RATE_LIMIT_HEALTH_PER_MINUTE = int(os.getenv("RATE_LIMIT_HEALTH_PER_MINUTE", "120"))
+
+# Request Size Limiting
+MAX_REQUEST_SIZE = int(os.getenv("MAX_REQUEST_SIZE", "1048576"))  # Default: 1MB
+
+# Security Headers
+ENABLE_SECURITY_HEADERS = os.getenv("ENABLE_SECURITY_HEADERS", "true").lower() == "true"
+
+# API Keys (for Phase 2)
+API_KEYS = os.getenv("API_KEYS", "").split(",") if os.getenv("API_KEYS") else []
+
