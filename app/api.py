@@ -479,7 +479,7 @@ def resolve_cas_from_identifier(identifier: str, dataframe: pd.DataFrame = None)
 
 @router.get("/summary")
 @apply_rate_limit("60/minute")
-def get_summary(_request: Request):
+def get_summary(request: Request):
     """
     Get a summary of available results in OpenChemFacts database.
     
@@ -505,7 +505,7 @@ def get_summary(_request: Request):
 
 @router.get("/cas/{cas}")
 @apply_rate_limit("60/minute")
-def get_cas_data(cas: str, _request: Request):
+def get_cas_data(cas: str, request: Request):
     """
     Compile available effect factors (EF) for a specific chemical.
 
@@ -569,9 +569,9 @@ def get_cas_data(cas: str, _request: Request):
 @router.get("/search")
 @apply_rate_limit("60/minute")
 def search_substances(
+    request: Request,
     query: str = Query(..., description="Search term (CAS number or chemical name, partial match supported)"),
-    limit: int = Query(20, ge=1, le=100, description="Maximum number of results to return"),
-    _request: Request = None
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of results to return")
 ):
     """
     Search for substances by CAS number or chemical name.
@@ -647,7 +647,7 @@ def search_substances(
 
 @router.get("/plot/ssd/{cas}")
 @apply_rate_limit("10/minute")
-def get_ssd_plot(cas: str, _request: Request):
+def get_ssd_plot(cas: str, request: Request):
     """
     Get SSD (Species Sensitivity Distribution) data for a single chemical in JSON format.
     
@@ -687,7 +687,7 @@ def get_ssd_plot(cas: str, _request: Request):
 
 @router.get("/plot/ec10eq/{cas}")
 @apply_rate_limit("10/minute")
-def get_ec10eq_plot(cas: str, _request: Request):
+def get_ec10eq_plot(cas: str, request: Request):
     """
     List all calculated EC10eq results per species and trophic group in JSON format.
 
@@ -721,7 +721,7 @@ def get_ec10eq_plot(cas: str, _request: Request):
 
 @router.post("/plot/ssd/comparison")
 @apply_rate_limit("10/minute")
-def get_ssd_comparison(request_body: ComparisonRequest, _request: Request):
+def get_ssd_comparison(request_body: ComparisonRequest, request: Request):
     """
     Get SSD (Species Sensitivity Distribution) data for multiple chemicals in JSON format.
     
