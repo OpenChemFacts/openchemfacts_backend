@@ -340,56 +340,77 @@ def search_substances(
     }
 
 
-@router.get("/plot/ssd/{identifier}")
+@router.get("/plot/ssd/{cas}")
 def get_ssd_plot(
-    identifier: str,
+    cas: str,
     width: int = Query(None, ge=200, le=3000, description="Plot width in pixels (default: 1600)"),
     height: int = Query(None, ge=200, le=3000, description="Plot height in pixels (default: 900)")
 ):
     """
-    Generate SSD (Species Sensitivity Distribution) and HC20 plot for a single chemical.
+    Get SSD (Species Sensitivity Distribution) data for a single chemical in JSON format.
     
-    The SSD uses pre-calculated parameters (SSD_mu_logEC10eq, SSD_sigma_logEC10eq) when available.
-    When these parameters are 0 (indicating a single value case), the SSD is calculated
-    from the Effect Factor (EF) in PAF.m3.kg from OpenChemFacts.
+    Returns all the data used to generate the SSD curve, including:
+    - SSD parameters (mu, sigma, HC20)
+    - Chemical information (name, number of species, trophic groups)
+    - Species data (EC10eq values, species names, trophic groups)
+    - SSD curve points (concentrations and corresponding affected species percentages)
     
     Args:
-        identifier: CAS number or chemical name (case-insensitive, partial match supported)
-        width: Optional plot width in pixels (200-3000, default: 1600)
-        height: Optional plot height in pixels (200-3000, default: 900)
+        cas: CAS number (e.g., "107-05-1")
+        width: Optional plot width in pixels (200-3000, default: 1600) - deprecated, kept for compatibility
+        height: Optional plot height in pixels (200-3000, default: 900) - deprecated, kept for compatibility
         
     Returns:
-        JSON representation of the Plotly figure (responsive and auto-sized)
+        JSON object containing SSD data structured as:
+        {
+            "cas_number": str,
+            "chemical_name": str,
+            "ssd_parameters": {
+                "mu_logEC10eq": float,
+                "sigma_logEC10eq": float,
+                "hc20_mgL": float
+            },
+            "summary": {
+                "n_species": int,
+                "n_ecotox_group": int
+            },
+            "species_data": [
+                {
+                    "species_name": str,
+                    "ec10eq_mgL": float,
+                    "trophic_group": str
+                }
+            ],
+            "ssd_curve": {
+                "concentrations_mgL": [float],
+                "affected_species_percent": [float]
+            } or None
+        }
     """
-    plot_ssd_global, _, _ = _load_plotting_functions()
-    if plot_ssd_global is None:
-        raise HTTPException(
-            status_code=503, 
-            detail="Plotting functions not available. Please check dependencies."
-        )
-    
     try:
-        # Resolve identifier to CAS number
-        cas = resolve_cas_from_identifier(identifier)
+        # Load data
+        df = load_data()
         
-        # Create custom config if dimensions are provided
-        config = None
-        if width is not None or height is not None:
-            from data.plotting_functions import PlotConfig
-            config = PlotConfig()
-            if width is not None:
-                config.plot_width = width
-            if height is not None:
-                config.plot_height = height
+        # Validate CAS exists
+        if cas not in df['cas_number'].values:
+            raise HTTPException(
+                status_code=404,
+                detail=f"CAS {cas} not found in database."
+            )
         
-        df_params = load_data_polars()
-        # Use the loaded function
-        fig = plot_ssd_global(df_params, cas, config=config)
-        return fig.to_dict()
+        # Import and use the function from plot_ssd_curve
+        from data.plot_ssd_curve import get_ssd_data
+        
+        # Get SSD data
+        ssd_data = get_ssd_data(df, cas)
+        
+        return ssd_data
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating plot: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving SSD data: {str(e)}")
 
 
 @router.get("/plot/ec10eq/{identifier}")

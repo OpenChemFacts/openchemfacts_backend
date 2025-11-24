@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Path to the data file
 # Note: Update this path if your data file has a different name or location
-DATA_PATH_ecotox_database = Path(__file__).resolve().parent.parent / "data" / "results_ecotox_database.parquet"
+DATA_PATH_ssd = Path(__file__).resolve().parent.parent / "data" / "results_ecotox_ssd.parquet"
 DATA_PATH_benchmark = Path(__file__).resolve().parent.parent / "data" / "results_EF_benchmark.parquet"
 
 @lru_cache(maxsize=1)
@@ -35,14 +35,14 @@ def load_data() -> pd.DataFrame:
         >>> df = load_data()
         >>> print(df.head())
     """
-    logger.info(f"Loading data from: {DATA_PATH_ecotox_database}")
-    logger.info(f"File exists: {DATA_PATH_ecotox_database.exists()}")
+    logger.info(f"Loading data from: {DATA_PATH_ssd}")
+    logger.info(f"File exists: {DATA_PATH_ssd.exists()}")
     
-    if not DATA_PATH_ecotox_database.exists():
-        raise FileNotFoundError(f"Data file not found at {DATA_PATH_ecotox_database}")
+    if not DATA_PATH_ssd.exists():
+        raise FileNotFoundError(f"Data file not found at {DATA_PATH_ssd}")
     
     # Read the Parquet file
-    df = pd.read_parquet(DATA_PATH_ecotox_database)
+    df = pd.read_parquet(DATA_PATH_ssd)
     logger.info(f"Data loaded: {df.shape[0]} rows, {df.shape[1]} columns")
     
     return df
@@ -70,14 +70,14 @@ def load_data_polars() -> pl.DataFrame:
         >>> df = load_data_polars()
         >>> print(df.head())
     """
-    logger.info(f"Loading data (Polars) from: {DATA_PATH_ecotox_database}")
-    logger.info(f"File exists: {DATA_PATH_ecotox_database.exists()}")
+    logger.info(f"Loading data (Polars) from: {DATA_PATH_ssd}")
+    logger.info(f"File exists: {DATA_PATH_ssd.exists()}")
     
-    if not DATA_PATH_ecotox_database.exists():
-        raise FileNotFoundError(f"Data file not found at {DATA_PATH_ecotox_database}")
+    if not DATA_PATH_ssd.exists():
+        raise FileNotFoundError(f"Data file not found at {DATA_PATH_ssd}")
     
     # Read the Parquet file with Polars
-    df = pl.read_parquet(DATA_PATH_ecotox_database)
+    df = pl.read_parquet(DATA_PATH_ssd)
     logger.info(f"Data loaded (Polars): {df.height} rows, {df.width} columns")
     
     return df
