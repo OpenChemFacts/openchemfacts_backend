@@ -165,43 +165,11 @@ def get_summary():
 
     # Retourner les statistiques de base
     return {
-        "cas": int(df["cas_number"].nunique()),
+        "chemicals": int(df["cas_number"].nunique()),
         "EF_openchemfacts(calculated)": int((df["Source"] == "OpenChemFacts 0.1").sum()),
         "EF_usetox(official)": int((df["Source"] == "USETOX 2.14").sum()),
         "EF_ef3.1(official)": int((df["Source"] == "EF 3.1").sum()),
     }
-
-@router.get("/by_column")
-def get_by_column(column: str):
-    """
-    Get unique values for a specific column.
-    
-    Args:
-        column: Name of the column to query
-        
-    Returns:
-        Dictionary containing:
-        - column: Name of the queried column
-        - unique_values: List of unique values in the column
-        - count: Number of unique values
-        
-    Raises:
-        HTTPException: 400 if the column doesn't exist
-    """
-    df = load_data()
-
-    # Vérifier que la colonne existe
-    if column not in df.columns:
-        raise HTTPException(status_code=400, detail="Colonne inconnue")
-
-    # Récupérer les valeurs uniques (sans les valeurs nulles)
-    values = df[column].dropna().unique().tolist()
-    return {
-        "column": column,
-        "unique_values": values,
-        "count": len(values),
-    }
-
 
 @router.get("/cas/list")
 def get_cas_list():
@@ -213,12 +181,11 @@ def get_cas_list():
     """
     df = load_benchmark_data()
     
-    cas_data = df[["cas_number", "name"]].drop_duplicates()
-    cas_list = cas_data.groupby("cas_number")["name"].first().reset_index()
+    cas_data = df[["cas_number", "INCHIKEY", "name"]].drop_duplicates(subset=["cas_number", "INCHIKEY"])
     
     return [
-        {"cas_number": str(row["cas_number"]), "name": str(row["name"])}
-        for _, row in cas_list.iterrows()
+        {"cas_number": str(row["cas_number"]), "INCHIKEY": str(row["INCHIKEY"]), "name": str(row["name"])}
+        for _, row in cas_data.iterrows()
     ]
 
 
