@@ -3,53 +3,101 @@ API routes for OpenChemFacts Backend.
 
 This module defines all the API endpoints including:
 - Data access endpoints (summary, search, CAS list)
-- Visualization endpoints (SSD plots, EC10eq plots, comparisons)
+- Data endpoints (SSD data, EC10eq data, comparisons)
+
+Note: This API returns only JSON data, not graphs or visualizations.
 """
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List
-from .data_loader import load_data, load_data_polars, load_benchmark_data, DATA_PATH_ec10eq
+from .data_loader import load_data, load_benchmark_data, DATA_PATH_ec10eq
 import sys
 from pathlib import Path
 import pandas as pd
 
-# Ajouter le dossier data au path pour importer plotting_functions
-# Cela permet d'importer les fonctions de visualisation depuis data/plotting_functions.py
+# Add data directory to path for importing data processing functions
 data_dir = Path(__file__).resolve().parent.parent / "data"
 sys.path.insert(0, str(data_dir.parent))
 
-# Lazy import des fonctions de visualisation pour éviter de charger les dépendances lourdes au démarrage
-# Les fonctions seront importées uniquement quand elles sont nécessaires
-_plotting_functions_loaded = False
-_plot_ssd_global = None
-_plot_ec10eq_by_taxa_and_species = None
-_plot_ssd_comparison = None
+# ============================================================================
+# Data processing function imports
+# ============================================================================
+# These functions are imported from separate modules to keep business logic
+# separate from API routing logic.
+
+# Cache for the EC10eq data function (lazy import with caching)
+_ec10eq_get_data_func = None
 
 
-def _load_plotting_functions():
-    """Charge les fonctions de visualisation de manière paresseuse (lazy loading)."""
-    global _plotting_functions_loaded, _plot_ssd_global, _plot_ec10eq_by_taxa_and_species, _plot_ssd_comparison
+def _get_ec10eq_data_function():
+    """
+    Import and cache the get_ec10eq_data_json function from api_ec10eq module.
     
-    if _plotting_functions_loaded:
-        return _plot_ssd_global, _plot_ec10eq_by_taxa_and_species, _plot_ssd_comparison
+    This function provides a clean separation between API routing (this file)
+    and data processing logic (api_ec10eq.py module).
     
-    try:
-        from data.plotting_functions import (
-            plot_ssd_global,
-            plot_ec10eq_by_taxa_and_species,
-            plot_ssd_comparison,
-        )
-        _plot_ssd_global = plot_ssd_global
-        _plot_ec10eq_by_taxa_and_species = plot_ec10eq_by_taxa_and_species
-        _plot_ssd_comparison = plot_ssd_comparison
-    except ImportError:
-        # Fallback si l'import échoue
-        _plot_ssd_global = None
-        _plot_ec10eq_by_taxa_and_species = None
-        _plot_ssd_comparison = None
+    Returns:
+        Function get_ec10eq_data_json from api_ec10eq module
+        
+    Raises:
+        ImportError: If the module cannot be imported
+    """
+    global _ec10eq_get_data_func
     
-    _plotting_functions_loaded = True
-    return _plot_ssd_global, _plot_ec10eq_by_taxa_and_species, _plot_ssd_comparison
+    if _ec10eq_get_data_func is not None:
+        return _ec10eq_get_data_func
+    
+    # Import using importlib to handle spaces in directory name ("EC10 details")
+    ec10eq_module_path = Path(__file__).resolve().parent.parent / "data" / "graph" / "EC10 details" / "api_ec10eq.py"
+    
+    if not ec10eq_module_path.exists():
+        raise ImportError(f"EC10eq module not found at {ec10eq_module_path}")
+    
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("api_ec10eq", ec10eq_module_path)
+    ec10eq_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ec10eq_module)
+    
+    _ec10eq_get_data_func = ec10eq_module.get_ec10eq_data_json
+    return _ec10eq_get_data_func
+
+
+# Cache for the SSD comparison data function (lazy import with caching)
+_ssd_comparison_get_data_func = None
+
+
+def _get_ssd_comparison_data_function():
+    """
+    Import and cache the get_ssd_comparison_data function from ssd_comparison_data module.
+    
+    This function provides a clean separation between API routing (this file)
+    and data processing logic (ssd_comparison_data.py module).
+    
+    Returns:
+        Function get_ssd_comparison_data from ssd_comparison_data module
+        
+    Raises:
+        ImportError: If the module cannot be imported
+    """
+    global _ssd_comparison_get_data_func
+    
+    if _ssd_comparison_get_data_func is not None:
+        return _ssd_comparison_get_data_func
+    
+    # Import using importlib to handle spaces in directory name ("SSD comparison")
+    ssd_comparison_module_path = Path(__file__).resolve().parent.parent / "data" / "graph" / "SSD comparison" / "ssd_comparison_data.py"
+    
+    if not ssd_comparison_module_path.exists():
+        raise ImportError(f"SSD comparison module not found at {ssd_comparison_module_path}")
+    
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ssd_comparison_data", ssd_comparison_module_path)
+    ssd_comparison_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ssd_comparison_module)
+    
+    _ssd_comparison_get_data_func = ssd_comparison_module.get_ssd_comparison_data
+    return _ssd_comparison_get_data_func
+
 
 # Créer le routeur API
 # Toutes les routes définies ici seront préfixées par /api (défini dans main.py)
@@ -70,12 +118,13 @@ class ComparisonRequest(BaseModel):
     height: int = None
 
 
-def resolve_cas_from_identifier(identifier: str) -> str:
+def resolve_cas_from_identifier(identifier: str, dataframe: pd.DataFrame = None) -> str:
     """
     Resolve a CAS number or chemical name to a CAS number.
     
     Args:
         identifier: CAS number or chemical name (case-insensitive, partial match supported)
+        dataframe: Optional DataFrame to use (if None, loads data)
         
     Returns:
         CAS number as string
@@ -83,12 +132,10 @@ def resolve_cas_from_identifier(identifier: str) -> str:
     Raises:
         ValueError: If no matching substance is found or multiple matches found
     """
-    df = load_data()
-    
-    # Normalize identifier (strip whitespace, case-insensitive)
+    df = dataframe if dataframe is not None else load_data()
     identifier_clean = identifier.strip()
     
-    # First, try exact CAS match
+    # Try exact CAS match
     cas_exact = df[df["cas_number"] == identifier_clean]
     if not cas_exact.empty:
         return identifier_clean
@@ -99,11 +146,10 @@ def resolve_cas_from_identifier(identifier: str) -> str:
         cas_numbers = name_exact["cas_number"].unique()
         if len(cas_numbers) == 1:
             return str(cas_numbers[0])
-        else:
-            raise ValueError(
-                f"Multiple CAS numbers found for name '{identifier}': {list(cas_numbers)}. "
-                f"Please use a CAS number instead."
-            )
+        raise ValueError(
+            f"Multiple CAS numbers found for name '{identifier}': {list(cas_numbers)}. "
+            f"Please use a CAS number instead."
+        )
     
     # Try partial name match (case-insensitive)
     name_partial = df[df["chemical_name"].str.lower().str.contains(identifier_clean.lower(), na=False)]
@@ -111,17 +157,15 @@ def resolve_cas_from_identifier(identifier: str) -> str:
         cas_numbers = name_partial["cas_number"].unique()
         if len(cas_numbers) == 1:
             return str(cas_numbers[0])
-        else:
-            # Return multiple matches for user to choose
-            matches = name_partial[["cas_number", "chemical_name"]].drop_duplicates()
-            matches_list = [
-                {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
-                for _, row in matches.iterrows()
-            ]
-            raise ValueError(
-                f"Multiple substances found matching '{identifier}': {matches_list}. "
-                f"Please be more specific or use a CAS number."
-            )
+        matches = name_partial[["cas_number", "chemical_name"]].drop_duplicates()
+        matches_list = [
+            {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
+            for _, row in matches.iterrows()
+        ]
+        raise ValueError(
+            f"Multiple substances found matching '{identifier}': {matches_list}. "
+            f"Please be more specific or use a CAS number."
+        )
     
     # Try partial CAS match
     cas_partial = df[df["cas_number"].str.contains(identifier_clean, na=False)]
@@ -129,16 +173,15 @@ def resolve_cas_from_identifier(identifier: str) -> str:
         cas_numbers = cas_partial["cas_number"].unique()
         if len(cas_numbers) == 1:
             return str(cas_numbers[0])
-        else:
-            matches = cas_partial[["cas_number", "chemical_name"]].drop_duplicates()
-            matches_list = [
-                {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
-                for _, row in matches.iterrows()
-            ]
-            raise ValueError(
-                f"Multiple CAS numbers found matching '{identifier}': {matches_list}. "
-                f"Please use the full CAS number."
-            )
+        matches = cas_partial[["cas_number", "chemical_name"]].drop_duplicates()
+        matches_list = [
+            {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
+            for _, row in matches.iterrows()
+        ]
+        raise ValueError(
+            f"Multiple CAS numbers found matching '{identifier}': {matches_list}. "
+            f"Please use the full CAS number."
+        )
     
     raise ValueError(f"No substance found matching '{identifier}'. Please check the CAS number or name.")
 
@@ -168,10 +211,13 @@ def get_list():
     """
     Get list of all available chemicals in the database.
 
-    Returns a list of dictionaries with CAS + INCHIKEY + NAME
+    Returns:
+        JSON array of dictionaries, each containing:
+        - cas_number: CAS number
+        - INCHIKEY: INCHIKEY identifier
+        - name: Chemical name
     """
     df = load_benchmark_data()
-    
     cas_data = df[["cas_number", "INCHIKEY", "name"]].drop_duplicates(subset=["cas_number", "INCHIKEY"])
     
     return [
@@ -187,7 +233,8 @@ def get_cas_data(cas: str):
     Args:
         cas: CAS number of the substance
         
-    Returns a dictionary containing:\n
+    Returns:
+        JSON object containing:
         - cas_number: CAS number of the substance
         - name: Chemical name
         - INCHIKEY: INCHIKEY of the chemical
@@ -197,10 +244,7 @@ def get_cas_data(cas: str):
         - EffectFactor(s): List of dictionaries with Source and EF
     """
     try:
-        # Load benchmark data
         df_benchmark = load_benchmark_data()
-        
-        # Filter by CAS number
         substance_data = df_benchmark[df_benchmark["cas_number"] == cas]
         
         if substance_data.empty:
@@ -209,41 +253,26 @@ def get_cas_data(cas: str):
                 detail=f"Substance with CAS number '{cas}' not found in benchmark data"
             )
         
-        # Get the first entry (single substance) and select only required columns
-        # Select only the required fields and convert to dict, handling NaN values
+        # Get first entry and required fields
         required_fields = ["cas_number", "name", "INCHIKEY", "Kingdom", "Superclass", "Class"]
         selected_data = substance_data[required_fields].iloc[0]
         
-        # Convert to dict and replace NaN/None values with None for JSON serialization
-        data_record = {}
-        for field in required_fields:
-            value = selected_data[field]
-            # Check if value is NaN using pandas
-            if pd.isna(value):
-                data_record[field] = None
-            else:
-                data_record[field] = value
+        # Convert to dict, handling NaN values for JSON serialization
+        data_record = {
+            field: None if pd.isna(selected_data[field]) else selected_data[field]
+            for field in required_fields
+        }
         
-        # Build EffectFactor(s) list from all available sources for this CAS
-        effect_factors = []
-        for _, row in substance_data.iterrows():
-            source = row["Source"]
-            ef_value = row["EF"]
-            
-            # Handle NaN values for EF
-            if pd.isna(ef_value):
-                ef_value = None
-            else:
-                ef_value = float(ef_value)
-            
-            effect_factors.append({
-                "Source": str(source),
-                "EF": ef_value
-            })
+        # Build EffectFactor(s) list
+        effect_factors = [
+            {
+                "Source": str(row["Source"]),
+                "EF": None if pd.isna(row["EF"]) else float(row["EF"])
+            }
+            for _, row in substance_data.iterrows()
+        ]
         
-        # Add EffectFactor(s) to the response
         data_record["EffectFactor(s)"] = effect_factors
-        
         return data_record
     except HTTPException:
         raise
@@ -270,67 +299,48 @@ def search_substances(
         limit: Maximum number of results (default: 20, max: 100)
         
     Returns:
-        Dictionary with matching substances (CAS number and chemical name)
+        JSON object containing:
+        - query: Original search query
+        - count: Number of matches found
+        - matches: List of matching substances, each with:
+          - cas: CAS number
+          - name: Chemical name
     """
     df = load_data()
-    
     query_clean = query.strip()
+    
+    # Helper function to format results
+    def format_matches(results_df):
+        results = results_df[["cas_number", "chemical_name"]].drop_duplicates()
+        matches = [
+            {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
+            for _, row in results.iterrows()
+        ]
+        return {
+            "query": query,
+            "count": len(matches),
+            "matches": matches[:limit],
+        }
     
     # Try exact CAS match first
     cas_exact = df[df["cas_number"] == query_clean]
     if not cas_exact.empty:
-        results = cas_exact[["cas_number", "chemical_name"]].drop_duplicates()
-        matches = [
-            {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
-            for _, row in results.iterrows()
-        ]
-        return {
-            "query": query,
-            "count": len(matches),
-            "matches": matches[:limit],
-        }
+        return format_matches(cas_exact)
     
     # Try exact name match (case-insensitive)
     name_exact = df[df["chemical_name"].str.lower() == query_clean.lower()]
     if not name_exact.empty:
-        results = name_exact[["cas_number", "chemical_name"]].drop_duplicates()
-        matches = [
-            {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
-            for _, row in results.iterrows()
-        ]
-        return {
-            "query": query,
-            "count": len(matches),
-            "matches": matches[:limit],
-        }
+        return format_matches(name_exact)
     
     # Try partial name match (case-insensitive)
     name_partial = df[df["chemical_name"].str.lower().str.contains(query_clean.lower(), na=False)]
     if not name_partial.empty:
-        results = name_partial[["cas_number", "chemical_name"]].drop_duplicates()
-        matches = [
-            {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
-            for _, row in results.iterrows()
-        ]
-        return {
-            "query": query,
-            "count": len(matches),
-            "matches": matches[:limit],
-        }
+        return format_matches(name_partial)
     
     # Try partial CAS match
     cas_partial = df[df["cas_number"].str.contains(query_clean, na=False)]
     if not cas_partial.empty:
-        results = cas_partial[["cas_number", "chemical_name"]].drop_duplicates()
-        matches = [
-            {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
-            for _, row in results.iterrows()
-        ]
-        return {
-            "query": query,
-            "count": len(matches),
-            "matches": matches[:limit],
-        }
+        return format_matches(cas_partial)
     
     # No matches found
     return {
@@ -345,41 +355,17 @@ def get_ssd_plot(cas: str):
     """
     Get SSD (Species Sensitivity Distribution) data for a single chemical in JSON format.
     
-    Returns all the data needed to generate the SSD plot, including:
-    - SSD parameters (mu, sigma, HC20)
-    - Chemical information (name, number of species, trophic groups)
-    - Species data (EC10eq values, species names, trophic groups)
-    - SSD curve points (concentrations and corresponding affected species percentages)
-    
     Args:
         cas: CAS number (e.g., "107-05-1")
         
     Returns:
-        JSON object containing SSD data structured as:
-        {
-            "cas_number": str,
-            "chemical_name": str,
-            "ssd_parameters": {
-                "mu_logEC10eq": float,
-                "sigma_logEC10eq": float,
-                "hc20_mgL": float
-            },
-            "summary": {
-                "n_species": int,
-                "n_ecotox_group": int
-            },
-            "species_data": [
-                {
-                    "species_name": str,
-                    "ec10eq_mgL": float,
-                    "trophic_group": str
-                }
-            ],
-            "ssd_curve": {
-                "concentrations_mgL": [float],
-                "affected_species_percent": [float]
-            } or None
-        }
+        JSON object containing detailed data to generate SSD curve:
+        - cas_number: CAS number
+        - chemical_name: Chemical name
+        - ssd_parameters: SSD parameters (mu, sigma, HC20)
+        - summary: Summary statistics (n_species, n_ecotox_group)
+        - species_data: List of species data
+        - ssd_curve: SSD curve points (concentrations and affected species percentages)
     """
     try:
         # Load data
@@ -399,72 +385,34 @@ def get_ssd_plot(cas: str):
 
 
 @router.get("/plot/ec10eq/{cas}")
-def get_ec10eq_plot(
-    cas: str,
-    output_format: str = Query("detailed", description="Format de sortie: 'detailed' ou 'simple'"),
-    width: int = Query(None, ge=200, le=3000, description="Plot width in pixels (default: 1000) - deprecated"),
-    height: int = Query(None, ge=200, le=2000, description="Plot height in pixels (default: 600) - deprecated")
-):
+def get_ec10eq_plot(cas: str):
     """
-    Get EC10eq data for a single chemical in JSON format.
-    
-    Returns EC10eq data organized by trophic group and species, including:
-    - Chemical information (CAS, name)
-    - Data organized by trophic groups and species
-    - Individual endpoints with EC10eq values, test_id, year, and author
-    
+    List all calculated EC10eq results per species and trophic group in JSON format.
+
     Args:
         cas: CAS number (e.g., "60-51-5")
-        output_format: Output format - 'detailed' (default) or 'simple'
-        width: Optional plot width in pixels (200-3000, default: 1000) - deprecated, kept for compatibility
-        height: Optional plot height in pixels (200-2000, default: 600) - deprecated, kept for compatibility
         
     Returns:
-        JSON object containing EC10eq data structured as:
-        {
-            "cas": str,
-            "chemical_name": str,
-            "trophic_groups": {
-                "trophic_group_name": {
-                    "species_name": [
-                        {
-                            "EC10eq": float,
-                            "test_id": int,
-                            "year": int,
-                            "author": str
-                        }
-                    ]
-                }
-            }
-        }
-        Or in 'simple' format:
-        {
-            "cas": str,
-            "chemical_name": str,
-            "endpoints": [
-                {
-                    "trophic_group": str,
-                    "species": str,
-                    "EC10eq": float,
-                    "test_id": int,
-                    "year": int,
-                    "author": str
-                }
-            ]
-        }
-    """
+        JSON object containing EC10eq data organized by trophic group and species:
+        - cas: CAS number
+        - chemical_name: Chemical name
+        - trophic_groups: Nested structure by trophic_group -> species -> endpoints
+          Each endpoint contains EC10eq, test_id, year, and author
+    """ 
     try:
-        # Import the function from EC10eq_details
-        from data.EC10eq_details import get_ec10eq_data_json
+        # Import data processing function (cached after first call)
+        get_ec10eq_data = _get_ec10eq_data_function()
         
-        # Get EC10eq data using the data path from data_loader
-        ec10eq_data = get_ec10eq_data_json(cas, data_path=str(DATA_PATH_ec10eq), format=output_format)
-        
-        return ec10eq_data
+        # Call data processing function with API configuration
+        return get_ec10eq_data(
+            cas_number=cas,
+            data_path=str(DATA_PATH_ec10eq),
+            output_format="detailed"
+        )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Data processing module error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving EC10eq data: {str(e)}")
 
@@ -474,11 +422,8 @@ def get_ssd_comparison(request: ComparisonRequest):
     """
     Get SSD (Species Sensitivity Distribution) data for multiple chemicals in JSON format.
     
-    Returns all the data used to generate SSD curves for comparison, including:
-    - SSD parameters (mu, sigma, HC20) for each chemical
-    - Chemical information (name, number of species, trophic groups) for each chemical
-    - Species data (EC10eq values, species names, trophic groups) for each chemical
-    - SSD curve points (concentrations and corresponding affected species percentages) for each chemical
+    This endpoint delegates data processing to the ssd_comparison_data module,
+    keeping API routing separate from business logic.
     
     Uses the same logic as /plot/ssd/{cas} but for multiple chemicals (2 to 5).
     
@@ -490,36 +435,9 @@ def get_ssd_comparison(request: ComparisonRequest):
                 Each identifier can be a CAS number or chemical name (case-insensitive, partial match supported)
         
     Returns:
-        JSON object containing SSD data for all chemicals structured as:
-        {
-            "comparison": [
-                {
-                    "cas_number": str,
-                    "chemical_name": str,
-                    "ssd_parameters": {
-                        "mu_logEC10eq": float,
-                        "sigma_logEC10eq": float,
-                        "hc20_mgL": float
-                    },
-                    "summary": {
-                        "n_species": int,
-                        "n_ecotox_group": int
-                    },
-                    "species_data": [
-                        {
-                            "species_name": str,
-                            "ec10eq_mgL": float,
-                            "trophic_group": str
-                        }
-                    ],
-                    "ssd_curve": {
-                        "concentrations_mgL": [float],
-                        "affected_species_percent": [float]
-                    } or None
-                }
-            ]
-        }
+        JSON object containing SSD data for all chemicals.
     """
+    # API-level validation
     if len(request.cas_list) < 2:
         raise HTTPException(
             status_code=400, 
@@ -542,35 +460,26 @@ def get_ssd_comparison(request: ComparisonRequest):
         # Load data
         df = load_data()
         
-        # Resolve all identifiers to CAS numbers
-        resolved_cas_list = []
-        for identifier in request.cas_list:
-            cas = resolve_cas_from_identifier(identifier)
-            resolved_cas_list.append(cas)
+        # Resolve all identifiers to CAS numbers (API-level logic)
+        # Pass dataframe to avoid reloading data for each identifier
+        resolved_cas_list = [
+            resolve_cas_from_identifier(identifier, dataframe=df)
+            for identifier in request.cas_list
+        ]
         
-        # Validate all CAS exist in database
-        for cas in resolved_cas_list:
-            if cas not in df['cas_number'].values:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"CAS {cas} not found in database."
-                )
+        # Import data processing function (cached after first call)
+        get_ssd_comparison_data = _get_ssd_comparison_data_function()
         
-        # Import and use the function from plot_ssd_curve (same as /plot/ssd/{cas})
-        from data.graph.SSD.plot_ssd_curve import get_ssd_data
-        
-        # Get SSD data for each CAS
-        comparison_data = []
-        for cas in resolved_cas_list:
-            ssd_data = get_ssd_data(df, cas)
-            comparison_data.append(ssd_data)
-        
-        return {
-            "comparison": comparison_data
-        }
+        # Call data processing function
+        return get_ssd_comparison_data(
+            dataframe=df,
+            cas_list=resolved_cas_list
+        )
     except HTTPException:
         raise
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e))
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Data processing module error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving SSD comparison data: {str(e)}")
