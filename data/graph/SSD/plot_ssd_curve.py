@@ -49,7 +49,8 @@ def get_ssd_data(
             "ssd_curve": {
                 "concentrations_mgL": [float],
                 "affected_species_percent": [float]
-            } or None
+            } or None,
+            "message": str (optional, only present when sigma_ssd == 0)
         }
         
     Raises:
@@ -62,22 +63,47 @@ def get_ssd_data(
     
     row = row.iloc[0]
     
-    # Extract SSD parameters
-    mu_ssd = float(row['SSD_mu_logEC10eq'])  # Mean in log10 space
-    sigma_ssd = float(row['SSD_sigma_logEC10eq'])  # Std in log10 space
-    hc20 = float(row['HC20'])  # HC20 value in mg/L
-    chemical_name = str(row['chemical_name'])
-    n_species = int(row['n_species'])
-    n_ecotox_group = int(row['n_ecotox_group'])
+    # Extract SSD parameters with safe conversion handling NaN/None values
+    # Use .get() with default values to handle missing columns gracefully
+    try:
+        mu_ssd = float(row.get('SSD_mu_logEC10eq', 0.0)) if pd.notna(row.get('SSD_mu_logEC10eq')) else 0.0
+    except (ValueError, TypeError):
+        mu_ssd = 0.0
+    
+    try:
+        sigma_ssd = float(row.get('SSD_sigma_logEC10eq', 0.0)) if pd.notna(row.get('SSD_sigma_logEC10eq')) else 0.0
+    except (ValueError, TypeError):
+        sigma_ssd = 0.0
+    
+    try:
+        hc20_val = row.get('HC20', 1e-3)
+        hc20 = float(hc20_val) if pd.notna(hc20_val) and float(hc20_val) > 0 else 1e-3
+    except (ValueError, TypeError):
+        hc20 = 1e-3
+    
+    try:
+        chemical_name = str(row.get('chemical_name', 'Unknown')) if pd.notna(row.get('chemical_name')) else "Unknown"
+    except (ValueError, TypeError):
+        chemical_name = "Unknown"
+    
+    try:
+        n_species = int(row.get('n_species', 0)) if pd.notna(row.get('n_species')) else 0
+    except (ValueError, TypeError):
+        n_species = 0
+    
+    try:
+        n_ecotox_group = int(row.get('n_ecotox_group', 0)) if pd.notna(row.get('n_ecotox_group')) else 0
+    except (ValueError, TypeError):
+        n_ecotox_group = 0
     
     # Extract species data
-    ec10eq_list = row['EC10eq_list']
+    ec10eq_list = row.get('EC10eq_list', [])
     if isinstance(ec10eq_list, np.ndarray):
         ec10eq_list = ec10eq_list.tolist()
     elif not isinstance(ec10eq_list, list):
         ec10eq_list = []
     
-    species_dict_list = row['species_ec10eq_dict_list']
+    species_dict_list = row.get('species_ec10eq_dict_list', [])
     if isinstance(species_dict_list, np.ndarray):
         species_dict_list = species_dict_list.tolist()
     elif not isinstance(species_dict_list, list):
@@ -92,10 +118,23 @@ def get_ssd_data(
             ec10eq = item.get('ec10eq') or item.get('EC10eq_species_mean', 0)
             trophic_group = item.get('trophic_group') or item.get('ecotox_group_unepsetacjrc2018', 'unknown')
             
+            # Safe conversion of ec10eq to float, handling None/NaN
+            try:
+                if ec10eq is None:
+                    ec10eq_float = 0.0
+                elif isinstance(ec10eq, float) and np.isnan(ec10eq):
+                    ec10eq_float = 0.0
+                else:
+                    ec10eq_float = float(ec10eq)
+                    if np.isnan(ec10eq_float) or ec10eq_float <= 0:
+                        ec10eq_float = 0.0
+            except (ValueError, TypeError):
+                ec10eq_float = 0.0
+            
             species_data.append({
-                'species_name': str(species_name),
-                'ec10eq_mgL': float(ec10eq),
-                'trophic_group': str(trophic_group)
+                'species_name': str(species_name) if species_name else 'Unknown',
+                'ec10eq_mgL': ec10eq_float,
+                'trophic_group': str(trophic_group) if trophic_group else 'unknown'
             })
     
     # Sort species data by EC10eq
@@ -104,6 +143,16 @@ def get_ssd_data(
     # Validate parameters and calculate curve
     if sigma_ssd == 0:
         # Single species case - return data without curve
+        # Get the species name from species_data if available
+        species_name = "Unknown"
+        if species_data and len(species_data) > 0:
+            species_name = species_data[0].get('species_name', 'Unknown')
+        
+        message = (
+            f"This substance [{chemical_name}] with CAS [{cas}] has only one EC10eq value specific to the species [{species_name}]. "
+            f"Please select other substances to display SSD curves."
+        )
+        
         return {
             "cas_number": cas,
             "chemical_name": chemical_name,
@@ -118,14 +167,35 @@ def get_ssd_data(
             },
             "species_data": species_data,
             "ssd_curve": None,
-            "message": f"Only one species value => no SSD curve is possible. HC20 = {hc20} mg/L"
+            "message": message
         }
     
     # Calculate SSD curve (CDF in log10 space)
     # All values are in mg/L (milligrams per liter) for consistency
     # Range: extend beyond data range
-    ec10_min = min(ec10eq_list) if len(ec10eq_list) > 0 else 1e-3  # mg/L
-    ec10_max = max(ec10eq_list) if len(ec10eq_list) > 0 else 1e3  # mg/L
+    # Filter out NaN/None values from ec10eq_list
+    valid_ec10eq_list = []
+    for x in ec10eq_list:
+        try:
+            if x is not None:
+                x_float = float(x)
+                if not np.isnan(x_float) and x_float > 0:
+                    valid_ec10eq_list.append(x_float)
+        except (ValueError, TypeError):
+            continue
+    
+    if len(valid_ec10eq_list) == 0:
+        # No valid EC10eq values, use defaults
+        ec10_min = 1e-3  # mg/L
+        ec10_max = 1e3  # mg/L
+    else:
+        ec10_min = min(valid_ec10eq_list)  # mg/L
+        ec10_max = max(valid_ec10eq_list)  # mg/L
+    
+    # Ensure positive values for log10
+    ec10_min = max(ec10_min, 1e-6)  # Avoid log10(0) or negative
+    ec10_max = max(ec10_max, 1e-6)
+    hc20 = max(hc20, 1e-6)  # Ensure HC20 is positive
     
     log_min = np.log10(ec10_min) - 1.0
     log_max = np.log10(ec10_max) + 1.0

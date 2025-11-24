@@ -49,7 +49,8 @@ def get_ssd_comparison_data(
                     "ssd_curve": {
                         "concentrations_mgL": [float],
                         "affected_species_percent": [float]
-                    } or None
+                    } or None,
+                    "message": str (optional, only present when sigma_ssd == 0)
                 }
             ]
         }

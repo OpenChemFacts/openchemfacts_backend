@@ -104,6 +104,138 @@ def _get_ssd_comparison_data_function():
 router = APIRouter()
 
 
+# ============================================================================
+# Helper functions for error handling and data validation
+# ============================================================================
+
+def validate_columns(dataframe: pd.DataFrame, required_columns: List[str], data_type: str = "data") -> None:
+    """
+    Validate that required columns exist in the dataframe.
+    
+    Args:
+        dataframe: DataFrame to validate
+        required_columns: List of required column names
+        data_type: Type of data (for error messages), e.g., "benchmark data", "SSD data"
+        
+    Raises:
+        HTTPException: If any required columns are missing
+    """
+    missing_columns = [col for col in required_columns if col not in dataframe.columns]
+    if missing_columns:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Missing required columns in {data_type}: {', '.join(missing_columns)}"
+        )
+
+
+def handle_data_errors(
+    error: Exception,
+    context: str = "data",
+    cas: str = None,
+    query: str = None
+) -> HTTPException:
+    """
+    Handle common data-related errors and return appropriate HTTPException.
+    
+    Args:
+        error: The exception that was raised
+        context: Context description for error messages (e.g., "benchmark data", "SSD data")
+        cas: Optional CAS number for context-specific error messages
+        query: Optional query string for search-related errors
+        
+    Returns:
+        HTTPException with appropriate status code and detail message
+    """
+    if isinstance(error, HTTPException):
+        return error
+    
+    if isinstance(error, FileNotFoundError):
+        detail = f"{context.capitalize()} file not found: {str(error)}"
+        return HTTPException(status_code=500, detail=detail)
+    
+    if isinstance(error, KeyError):
+        if cas:
+            detail = f"Missing required column in {context} for CAS '{cas}': {str(error)}"
+        else:
+            detail = f"Missing required column in {context}: {str(error)}"
+        return HTTPException(status_code=500, detail=detail)
+    
+    if isinstance(error, ValueError):
+        if cas:
+            detail = f"{context.capitalize()} not found for CAS '{cas}': {str(error)}"
+        elif query:
+            detail = f"Error searching for query '{query}': {str(error)}"
+        else:
+            detail = f"Error in {context}: {str(error)}"
+        return HTTPException(status_code=404, detail=detail)
+    
+    if isinstance(error, ImportError):
+        detail = f"Failed to import {context} processing module: {str(error)}"
+        return HTTPException(status_code=500, detail=detail)
+    
+    # Generic error
+    if cas:
+        detail = f"Error retrieving {context} for CAS '{cas}': {str(error)}"
+    elif query:
+        detail = f"Error searching for query '{query}': {str(error)}"
+    else:
+        detail = f"Error retrieving {context}: {str(error)}"
+    return HTTPException(status_code=500, detail=detail)
+
+
+def load_and_validate_benchmark_data(required_columns: List[str]) -> pd.DataFrame:
+    """
+    Load benchmark data and validate required columns.
+    
+    Args:
+        required_columns: List of required column names
+        
+    Returns:
+        DataFrame with benchmark data
+        
+    Raises:
+        HTTPException: If data cannot be loaded or columns are missing
+    """
+    try:
+        df = load_benchmark_data()
+        validate_columns(df, required_columns, "benchmark data")
+        return df
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Benchmark data file not found: {str(e)}"
+        )
+    except Exception as e:
+        raise handle_data_errors(e, "benchmark data")
+
+
+def load_and_validate_ssd_data(required_columns: List[str] = None) -> pd.DataFrame:
+    """
+    Load SSD data and optionally validate required columns.
+    
+    Args:
+        required_columns: Optional list of required column names
+        
+    Returns:
+        DataFrame with SSD data
+        
+    Raises:
+        HTTPException: If data cannot be loaded or columns are missing
+    """
+    try:
+        df = load_data()
+        if required_columns:
+            validate_columns(df, required_columns, "SSD data")
+        return df
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"SSD data file not found: {str(e)}"
+        )
+    except Exception as e:
+        raise handle_data_errors(e, "SSD data")
+
+
 class ComparisonRequest(BaseModel):
     """
     Request model for SSD comparison endpoint.
@@ -193,14 +325,19 @@ def get_summary():
             - EF_usetox(official): Total number of EF officially provided by USETOX
             - EF_ef3.1(official): Total number of EF officially provided by EF 3.1
     """
-    
-    df = load_benchmark_data()
-    return {
-        "chemicals": int(df["cas_number"].nunique()),
-        "EF_openchemfacts(calculated)": int((df["Source"] == "OpenChemFacts 0.1").sum()),
-        "EF_usetox(official)": int((df["Source"] == "USETOX 2.14").sum()),
-        "EF_ef3.1(official)": int((df["Source"] == "EF 3.1").sum()),
-    }
+    try:
+        df = load_and_validate_benchmark_data(["cas_number", "Source"])
+        
+        return {
+            "chemicals": int(df["cas_number"].nunique()),
+            "EF_openchemfacts(calculated)": int((df["Source"] == "OpenChemFacts 0.1").sum()),
+            "EF_usetox(official)": int((df["Source"] == "USETOX 2.14").sum()),
+            "EF_ef3.1(official)": int((df["Source"] == "EF 3.1").sum()),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise handle_data_errors(e, "summary data")
 
 @router.get("/list")
 def get_list():
@@ -213,13 +350,19 @@ def get_list():
         - INCHIKEY: INCHIKEY identifier
         - name: Chemical name
     """
-    df = load_benchmark_data()
-    cas_data = df[["cas_number", "INCHIKEY", "name"]].drop_duplicates(subset=["cas_number", "INCHIKEY"])
-    
-    return [
-        {"cas_number": str(row["cas_number"]), "INCHIKEY": str(row["INCHIKEY"]), "name": str(row["name"])}
-        for _, row in cas_data.iterrows()
-    ]
+    try:
+        df = load_and_validate_benchmark_data(["cas_number", "INCHIKEY", "name"])
+        
+        cas_data = df[["cas_number", "INCHIKEY", "name"]].drop_duplicates(subset=["cas_number", "INCHIKEY"])
+        
+        return [
+            {"cas_number": str(row["cas_number"]), "INCHIKEY": str(row["INCHIKEY"]), "name": str(row["name"])}
+            for _, row in cas_data.iterrows()
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise handle_data_errors(e, "chemical list")
 
 @router.get("/cas/{cas}")
 def get_cas_data(cas: str):
@@ -240,13 +383,13 @@ def get_cas_data(cas: str):
         - EffectFactor(s): List of dictionaries with Source and EF
     """
     try:
-        df_benchmark = load_benchmark_data()
+        df_benchmark = load_and_validate_benchmark_data(["cas_number", "name", "INCHIKEY", "Kingdom", "Superclass", "Class", "Source", "EF"])
         substance_data = df_benchmark[df_benchmark["cas_number"] == cas]
         
         if substance_data.empty:
             raise HTTPException(
                 status_code=404,
-                detail=f"Substance with CAS number '{cas}' not found in benchmark data"
+                detail=f"Substance with CAS number '{cas}' not found in benchmark data. Please verify the CAS number is correct."
             )
         
         # Get first entry and required fields
@@ -260,20 +403,25 @@ def get_cas_data(cas: str):
         }
         
         # Build EffectFactor(s) list
-        effect_factors = [
-            {
-                "Source": str(row["Source"]),
-                "EF": None if pd.isna(row["EF"]) else float(row["EF"])
-            }
-            for _, row in substance_data.iterrows()
-        ]
+        effect_factors = []
+        for _, row in substance_data.iterrows():
+            try:
+                effect_factors.append({
+                    "Source": str(row["Source"]),
+                    "EF": None if pd.isna(row["EF"]) else float(row["EF"])
+                })
+            except (ValueError, TypeError) as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error processing effect factor data for CAS '{cas}': {str(e)}"
+                )
         
         data_record["EffectFactor(s)"] = effect_factors
         return data_record
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving data: {str(e)}")
+        raise handle_data_errors(e, "benchmark data", cas=cas)
 
 
 @router.get("/search")
@@ -302,48 +450,60 @@ def search_substances(
           - cas: CAS number
           - name: Chemical name
     """
-    df = load_data()
-    query_clean = query.strip()
-    
-    # Helper function to format results
-    def format_matches(results_df):
-        results = results_df[["cas_number", "chemical_name"]].drop_duplicates()
-        matches = [
-            {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
-            for _, row in results.iterrows()
-        ]
+    try:
+        df = load_and_validate_ssd_data(["cas_number", "chemical_name"])
+        
+        query_clean = query.strip()
+        
+        if not query_clean:
+            raise HTTPException(
+                status_code=400,
+                detail="Search query cannot be empty"
+            )
+        
+        # Helper function to format results
+        def format_matches(results_df):
+            results = results_df[["cas_number", "chemical_name"]].drop_duplicates()
+            matches = [
+                {"cas": str(row["cas_number"]), "name": str(row["chemical_name"])}
+                for _, row in results.iterrows()
+            ]
+            return {
+                "query": query,
+                "count": len(matches),
+                "matches": matches[:limit],
+            }
+        
+        # Try exact CAS match first
+        cas_exact = df[df["cas_number"] == query_clean]
+        if not cas_exact.empty:
+            return format_matches(cas_exact)
+        
+        # Try exact name match (case-insensitive)
+        name_exact = df[df["chemical_name"].str.lower() == query_clean.lower()]
+        if not name_exact.empty:
+            return format_matches(name_exact)
+        
+        # Try partial name match (case-insensitive)
+        name_partial = df[df["chemical_name"].str.lower().str.contains(query_clean.lower(), na=False)]
+        if not name_partial.empty:
+            return format_matches(name_partial)
+        
+        # Try partial CAS match
+        cas_partial = df[df["cas_number"].str.contains(query_clean, na=False)]
+        if not cas_partial.empty:
+            return format_matches(cas_partial)
+        
+        # No matches found
         return {
             "query": query,
-            "count": len(matches),
-            "matches": matches[:limit],
+            "count": 0,
+            "matches": [],
         }
-    
-    # Try exact CAS match first
-    cas_exact = df[df["cas_number"] == query_clean]
-    if not cas_exact.empty:
-        return format_matches(cas_exact)
-    
-    # Try exact name match (case-insensitive)
-    name_exact = df[df["chemical_name"].str.lower() == query_clean.lower()]
-    if not name_exact.empty:
-        return format_matches(name_exact)
-    
-    # Try partial name match (case-insensitive)
-    name_partial = df[df["chemical_name"].str.lower().str.contains(query_clean.lower(), na=False)]
-    if not name_partial.empty:
-        return format_matches(name_partial)
-    
-    # Try partial CAS match
-    cas_partial = df[df["cas_number"].str.contains(query_clean, na=False)]
-    if not cas_partial.empty:
-        return format_matches(cas_partial)
-    
-    # No matches found
-    return {
-        "query": query,
-        "count": 0,
-        "matches": [],
-    }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise handle_data_errors(e, "search", query=query)
 
 
 @router.get("/plot/ssd/{cas}")
@@ -364,8 +524,7 @@ def get_ssd_plot(cas: str):
         - ssd_curve: SSD curve points (concentrations and affected species percentages)
     """
     try:
-        # Load data
-        df = load_data()
+        df = load_and_validate_ssd_data()
         
         # Import and use the function from plot_ssd_curve
         from data.graph.SSD.plot_ssd_curve import get_ssd_data
@@ -374,10 +533,14 @@ def get_ssd_plot(cas: str):
         ssd_data = get_ssd_data(df, cas)
         
         return ssd_data
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving SSD data: {str(e)}")
+        error = handle_data_errors(e, "SSD data", cas=cas)
+        # Add additional context for KeyError in SSD data
+        if isinstance(e, KeyError):
+            error.detail += ". Please check the data structure."
+        raise error
 
 
 @router.get("/plot/ec10eq/{cas}")
@@ -405,12 +568,10 @@ def get_ec10eq_plot(cas: str):
             data_path=str(DATA_PATH_ec10eq),
             output_format="detailed"
         )
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except ImportError as e:
-        raise HTTPException(status_code=500, detail=f"Data processing module error: {str(e)}")
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving EC10eq data: {str(e)}")
+        raise handle_data_errors(e, "EC10eq data", cas=cas)
 
 
 @router.post("/plot/ssd/comparison")
@@ -445,15 +606,25 @@ def get_ssd_comparison(request: ComparisonRequest):
         )
     
     try:
-        # Load data
-        df = load_data()
+        df = load_and_validate_ssd_data()
         
         # Resolve all identifiers to CAS numbers (API-level logic)
         # Pass dataframe to avoid reloading data for each identifier
-        resolved_cas_list = [
-            resolve_cas_from_identifier(identifier, dataframe=df)
-            for identifier in request.cas_list
-        ]
+        resolved_cas_list = []
+        invalid_identifiers = []
+        
+        for identifier in request.cas_list:
+            try:
+                resolved_cas = resolve_cas_from_identifier(identifier, dataframe=df)
+                resolved_cas_list.append(resolved_cas)
+            except ValueError as e:
+                invalid_identifiers.append(f"'{identifier}': {str(e)}")
+        
+        if invalid_identifiers:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Invalid or not found identifiers: {', '.join(invalid_identifiers)}"
+            )
         
         # Import data processing function (cached after first call)
         get_ssd_comparison_data = _get_ssd_comparison_data_function()
@@ -465,9 +636,5 @@ def get_ssd_comparison(request: ComparisonRequest):
         )
     except HTTPException:
         raise
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except ImportError as e:
-        raise HTTPException(status_code=500, detail=f"Data processing module error: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving SSD comparison data: {str(e)}")
+        raise handle_data_errors(e, "SSD comparison data")
