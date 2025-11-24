@@ -11,18 +11,10 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 from typing import List
 from .data_loader import load_data, load_benchmark_data, DATA_PATH_ec10eq
-from .security import limiter
+from .security import apply_rate_limit
 import sys
 from pathlib import Path
 import pandas as pd
-
-# Rate limiting decorators - apply conditionally
-def apply_rate_limit(limit_str: str):
-    """Apply rate limiting decorator if enabled."""
-    from .security import RATE_LIMIT_ENABLED
-    if RATE_LIMIT_ENABLED:
-        return limiter.limit(limit_str)
-    return lambda f: f
 
 # Add data directory to path for importing data processing functions
 data_dir = Path(__file__).resolve().parent.parent / "data"

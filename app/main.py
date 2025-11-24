@@ -20,7 +20,7 @@ from .middleware import (
     RequestSizeLimitMiddleware,
     SecurityLoggingMiddleware
 )
-from .security import limiter, RATE_LIMIT_ENABLED, RATE_LIMIT_HEALTH_PER_MINUTE
+from .security import limiter, RATE_LIMIT_ENABLED, rate_limit_health
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -120,8 +120,8 @@ app.include_router(api.router, prefix="/api", tags=["api"])
 
 
 @app.get("/")
-@limiter.limit(f"{RATE_LIMIT_HEALTH_PER_MINUTE}/minute") if RATE_LIMIT_ENABLED else lambda f: f
-def root(_request: Request):
+@rate_limit_health()
+def root(request: Request):
     """
     Root endpoint providing API information and available endpoints.
     
@@ -149,8 +149,8 @@ def root(_request: Request):
 
 
 @app.get("/health")
-@limiter.limit(f"{RATE_LIMIT_HEALTH_PER_MINUTE}/minute") if RATE_LIMIT_ENABLED else lambda f: f
-def health(_request: Request):
+@rate_limit_health()
+def health(request: Request):
     """
     Health check endpoint to verify API and data availability.
     

@@ -89,3 +89,16 @@ def rate_limit_plot():
         return lambda f: f  # No-op decorator if rate limiting is disabled
     return limiter.limit(f"{RATE_LIMIT_PLOT_PER_MINUTE}/minute")
 
+
+def rate_limit_health():
+    """Rate limit decorator for health/root endpoints (more lenient limit)."""
+    if not RATE_LIMIT_ENABLED:
+        return lambda f: f  # No-op decorator if rate limiting is disabled
+    return limiter.limit(f"{RATE_LIMIT_HEALTH_PER_MINUTE}/minute")
+
+
+def apply_rate_limit(limit_str: str):
+    """Apply rate limiting decorator if enabled."""
+    if not RATE_LIMIT_ENABLED:
+        return lambda f: f  # No-op decorator if rate limiting is disabled
+    return limiter.limit(limit_str)
