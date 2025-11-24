@@ -110,12 +110,8 @@ class ComparisonRequest(BaseModel):
     
     Attributes:
         cas_list: List of CAS numbers or chemical names to compare (between 2 and 5)
-        width: Optional plot width in pixels (200-3000, default: 1600) - deprecated
-        height: Optional plot height in pixels (200-3000, default: 900) - deprecated
     """
     cas_list: List[str]
-    width: int = None
-    height: int = None
 
 
 def resolve_cas_from_identifier(identifier: str, dataframe: pd.DataFrame = None) -> str:
@@ -212,7 +208,7 @@ def get_list():
     Get list of all available chemicals in the database.
 
     Returns:
-        JSON array of dictionaries, each containing:
+        JSON array of dictionaries, each containing:\n
         - cas_number: CAS number
         - INCHIKEY: INCHIKEY identifier
         - name: Chemical name
@@ -234,7 +230,7 @@ def get_cas_data(cas: str):
         cas: CAS number of the substance
         
     Returns:
-        JSON object containing:
+        JSON object containing:\n
         - cas_number: CAS number of the substance
         - name: Chemical name
         - INCHIKEY: INCHIKEY of the chemical
@@ -299,7 +295,7 @@ def search_substances(
         limit: Maximum number of results (default: 20, max: 100)
         
     Returns:
-        JSON object containing:
+        JSON object containing:\n
         - query: Original search query
         - count: Number of matches found
         - matches: List of matching substances, each with:
@@ -359,7 +355,7 @@ def get_ssd_plot(cas: str):
         cas: CAS number (e.g., "107-05-1")
         
     Returns:
-        JSON object containing detailed data to generate SSD curve:
+        JSON object containing detailed data to generate SSD curve:\n
         - cas_number: CAS number
         - chemical_name: Chemical name
         - ssd_parameters: SSD parameters (mu, sigma, HC20)
@@ -393,7 +389,7 @@ def get_ec10eq_plot(cas: str):
         cas: CAS number (e.g., "60-51-5")
         
     Returns:
-        JSON object containing EC10eq data organized by trophic group and species:
+        JSON object containing EC10eq data organized by trophic group and species:\n
         - cas: CAS number
         - chemical_name: Chemical name
         - trophic_groups: Nested structure by trophic_group -> species -> endpoints
@@ -430,8 +426,6 @@ def get_ssd_comparison(request: ComparisonRequest):
     Args:
         request: Request body containing:
                 - cas_list: List of CAS numbers or chemical names (between 2 and 5)
-                - width: Optional plot width in pixels (200-3000, default: 1600) - deprecated, kept for compatibility
-                - height: Optional plot height in pixels (200-3000, default: 900) - deprecated, kept for compatibility
                 Each identifier can be a CAS number or chemical name (case-insensitive, partial match supported)
         
     Returns:
@@ -449,12 +443,6 @@ def get_ssd_comparison(request: ComparisonRequest):
             status_code=400, 
             detail=f"Maximum 5 substances can be compared. Provided: {len(request.cas_list)}"
         )
-    
-    # Validate dimensions if provided (deprecated but kept for compatibility)
-    if request.width is not None and (request.width < 200 or request.width > 3000):
-        raise HTTPException(status_code=400, detail="Width must be between 200 and 3000 pixels")
-    if request.height is not None and (request.height < 200 or request.height > 3000):
-        raise HTTPException(status_code=400, detail="Height must be between 200 and 3000 pixels")
     
     try:
         # Load data
