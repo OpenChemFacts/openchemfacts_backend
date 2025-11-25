@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="openchemfacts_API_0.1",
     version="0.1.0",
-    description="API for accessing ecotoxicology data and generating scientific visualizations",
+    description="OpenChemFacts is an open-data platform dedicated to the assessment of chemicals’ ecotoxicity. <br>API for accessing ecotoxicology data and generating scientific visualizations"
 )
 
 # Initialize rate limiter
