@@ -30,14 +30,14 @@ echo "Activation de l'environnement virtuel..."
 source venv/Scripts/activate
 
 # Vérifier que les dépendances sont installées
-if ! python -c "import fastapi" 2>/dev/null; then
+if ! python -c "import fastapi" 2>/dev/null || ! python -c "import slowapi" 2>/dev/null; then
     echo "⚠️  Dépendances non installées. Installation..."
     pip install -r requirements.txt
     echo "✅ Dépendances installées."
 fi
 
 # Vérifier que le fichier de données existe
-if [ ! -f "data/results_ecotox_"*.parquet ]; then
+if ! ls data/results_ecotox_*.parquet 1>/dev/null 2>&1; then
     echo "⚠️  Aucun fichier de données trouvé dans data/"
     echo "   Assurez-vous que le fichier results_ecotox_*.parquet existe."
 fi

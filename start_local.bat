@@ -31,8 +31,15 @@ call venv\Scripts\activate.bat
 
 REM Vérifier que les dépendances sont installées
 python -c "import fastapi" >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
+set FASTAPI_OK=%ERRORLEVEL%
+python -c "import slowapi" >nul 2>&1
+set SLOWAPI_OK=%ERRORLEVEL%
+if %FASTAPI_OK% NEQ 0 (
     echo ⚠️  Dépendances non installées. Installation...
+    pip install -r requirements.txt
+    echo ✅ Dépendances installées.
+) else if %SLOWAPI_OK% NEQ 0 (
+    echo ⚠️  Dépendances incomplètes. Installation...
     pip install -r requirements.txt
     echo ✅ Dépendances installées.
 )

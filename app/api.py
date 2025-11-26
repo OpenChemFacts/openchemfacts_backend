@@ -495,6 +495,45 @@ def get_summary(request: Request):
     except Exception as e:
         raise handle_data_errors(e, "summary data")
 
+
+@router.get("/metadata")
+@apply_rate_limit("60/minute")
+def get_metadata(request: Request):
+    """
+    Get contextual information about parameters and modules displayed in the frontend.
+    
+    This endpoint provides definitions, units, and other contextual information
+    for various parameters used throughout the application. The metadata is
+    organized by category and can be easily extended with additional information.
+    
+    Returns:
+        JSON object containing metadata grouped by category:\n
+        - HC20: Contains unit and definition
+        - effect_factor: Contains unit, summary, and details
+        - 
+    """
+    return {
+        "HC20": {
+            "unit": "mg/L",
+            "definition": "HC20 represents the environmental concentration affecting 20% of species."
+        },
+        "EC10eq": {
+            "unit": "mg/L",
+            "definition": "EC10eq values represent the concentration affecting 10% of a specific species based on relevant endpoints (e.g. LC50, EC50, etc.). They are used to construct the SSD."
+        },
+        "SSD": {
+            "definition": "Species Sensitivity Distribution",
+            "summary": "SSD is constructed by fitting a log-normal distribution to chronic EC10eq toxicity endpoints from multiple species, showing the range of concentrations at which they are affected.",
+        },
+        "EF": {
+            "unit": "PAF·m³/kg",
+            "formula": "EF = O,2 / HC20",
+            "summary": "EF is the HC20 concentration-response slope factor expressed in PAF·m³·kg⁻¹.",
+            "details": "The Effect Factor represents the increase in the potentially affected fraction of species (PAF) per unit increase in chemical concentration, based on a concentration–response relationship.",
+        }
+    }
+
+
 @router.get("/cas/{cas}")
 @apply_rate_limit("60/minute")
 def get_cas_data(cas: str, request: Request):
