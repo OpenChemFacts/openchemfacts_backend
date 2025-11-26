@@ -515,15 +515,18 @@ def get_metadata(request: Request):
     return {
         "HC20": {
             "unit": "mg/L",
-            "definition": "HC20 represents the environmental concentration affecting 20% of species."
+            "definition": "HC20 represents the environmental concentration affecting 20% of species.",
+            "why": "HC20 is used to calculate the Effect Factor (EF) of any chemical by taking the slope on the SSD at the HC20.",
         },
         "EC10eq": {
             "unit": "mg/L",
-            "definition": "EC10eq values represent the concentration affecting 10% of a specific species based on relevant endpoints (e.g. LC50, EC50, etc.). They are used to construct the SSD."
+            "definition": "EC10eq values represent the concentration affecting 10% of a specific species based on relevant endpoints (e.g. LC50, EC50, etc.). They are used to construct the SSD.",
+            "why": "EC10eq values are used to construct the SSD of a chemical. These values are based on toxicological tests conducted on specific species.",
         },
         "SSD": {
             "definition": "Species Sensitivity Distribution",
             "summary": "SSD is constructed by fitting a log-normal distribution to chronic EC10eq toxicity endpoints from multiple species, showing the range of concentrations at which they are affected.",
+            "why": "SSD is used to calculate the Effect Factor (EF) of any chemical by taking the slope on the SSD at the HC20.",
         },
         "EF": {
             "unit": "PAF·m³/kg",
