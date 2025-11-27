@@ -115,7 +115,6 @@ openchemfacts_backend/
 │   └── results_ecotox_*.parquet  # Ecotoxicology data
 ├── scripts/             # Utility scripts
 ├── tests/               # Test suite
-├── Documentation/       # Detailed documentation
 ├── Procfile             # Scalingo configuration
 ├── requirements.txt     # Python dependencies
 └── README.md           # This file
@@ -123,7 +122,7 @@ openchemfacts_backend/
 
 ## Deployment
 
-The application can be deployed on Scalingo. For detailed deployment instructions, see `Documentation/06_Deploiement_Scalingo.md`.
+The application can be deployed on Scalingo. 
 
 Quick deployment:
 ```bash
@@ -134,15 +133,3 @@ git push scalingo main
 
 - `ALLOWED_ORIGINS`: Allowed CORS origins (comma-separated)
   - Default: `https://openchemfacts.com,https://openchemfacts.lovable.app`
-
-## Documentation
-
-For detailed documentation, see the `Documentation/` folder:
-- Installation and configuration: `Documentation/03_Installation_Configuration.md`
-- API usage: `Documentation/04_Utilisation_API.md`
-- Deployment: `Documentation/06_Deploiement_Scalingo.md`
-- Development: `Documentation/05_Developpement_Local.md`
-
-## Support
-
-For questions or issues, consult the Scalingo documentation: https://doc.scalingo.com
