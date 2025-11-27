@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script pour vérifier si le serveur local est démarré
-# Usage: ./check_server.sh [port]
+# Usage: ./scripts/check_server.sh [port]
 
 PORT=${1:-8000}
 URL="http://localhost:$PORT"
@@ -38,7 +38,7 @@ else
     echo ""
     echo "Le serveur n'est probablement pas démarré."
     echo "Pour démarrer le serveur:"
-    echo "   ./start_local.sh $PORT"
+    echo "   ./scripts/start_local.sh $PORT"
     echo "   ou"
     echo "   uvicorn app.main:app --host 0.0.0.0 --port $PORT --reload"
     exit 1

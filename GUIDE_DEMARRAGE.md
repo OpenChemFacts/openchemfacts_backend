@@ -6,24 +6,24 @@
 
 **Windows :**
 ```batch
-start_local.bat
+scripts\start_local.bat
 ```
 
 **Linux/macOS :**
 ```bash
-./start_local.sh
+./scripts/start_local.sh
 ```
 
 ### Vérifier que le serveur est démarré
 
 **Windows :**
 ```batch
-check_server.bat
+scripts\check_server.bat
 ```
 
 **Linux/macOS :**
 ```bash
-./check_server.sh
+./scripts/check_server.sh
 ```
 
 **Ou manuellement :**
@@ -44,12 +44,12 @@ check_server.bat
 
 **Windows :**
 ```batch
-deploy_scalingo.bat
+scripts\deploy_scalingo.bat
 ```
 
 **Linux/macOS :**
 ```bash
-./deploy_scalingo.sh
+./scripts/deploy_scalingo.sh
 ```
 
 ### Déployer une nouvelle version
@@ -86,8 +86,8 @@ scalingo open
 - [ ] Environnement virtuel créé (`python -m venv venv`)
 - [ ] Dépendances installées (`pip install -r requirements.txt`)
 - [ ] Fichier de données présent (`data/results_ecotox_*.parquet`)
-- [ ] Serveur démarré (`./start_local.sh` ou `start_local.bat`)
-- [ ] Serveur vérifié (`./check_server.sh` ou `check_server.bat`)
+- [ ] Serveur démarré (`./scripts/start_local.sh` ou `scripts\start_local.bat`)
+- [ ] Serveur vérifié (`./scripts/check_server.sh` ou `scripts\check_server.bat`)
 
 ---
 
@@ -95,7 +95,7 @@ scalingo open
 
 ### Le serveur local ne répond pas
 
-1. Vérifier que le serveur est démarré : `./check_server.sh`
+1. Vérifier que le serveur est démarré : `./scripts/check_server.sh`
 2. Vérifier le port : le port 8000 est-il libre ?
 3. Vérifier les logs dans le terminal où le serveur est lancé
 
@@ -109,7 +109,7 @@ scalingo open
 
 ## 💡 Points importants
 
-- **Serveur local** : Démarrage manuel avec `start_local.sh`/`start_local.bat`
+- **Serveur local** : Démarrage manuel avec `scripts/start_local.sh`/`scripts/start_local.bat`
 - **Serveur Scalingo** : Démarrage automatique après `git push scalingo main`
 - **Rechargement** : Le serveur local recharge automatiquement les modifications (mode `--reload`)
 - **Port** : Par défaut 8000, modifiable dans les scripts

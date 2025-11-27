@@ -1,6 +1,6 @@
 @echo off
 REM Script pour exécuter les tests automatiquement
-REM Usage: run_tests.bat
+REM Usage: scripts\run_tests.bat
 
 echo === Execution des tests ===
 echo.

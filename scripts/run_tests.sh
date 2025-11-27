@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script pour exécuter les tests automatiquement
-# Usage: ./run_tests.sh
+# Usage: ./scripts/run_tests.sh
 
 set -e
 

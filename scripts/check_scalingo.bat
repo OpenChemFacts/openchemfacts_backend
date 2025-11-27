@@ -1,6 +1,6 @@
 @echo off
 REM Script pour vérifier l'état du serveur Scalingo en production
-REM Usage: check_scalingo.bat
+REM Usage: scripts\check_scalingo.bat
 
 echo === Vérification du serveur Scalingo ===
 echo.

@@ -16,13 +16,13 @@ Ce dossier contient les tests automatisés pour l'API OpenChemFacts Backend. Les
 
 **Sur Windows :**
 ```batch
-run_tests.bat
+scripts\run_tests.bat
 ```
 
 **Sur Linux/macOS :**
 ```bash
-chmod +x run_tests.sh
-./run_tests.sh
+chmod +x scripts/run_tests.sh
+./scripts/run_tests.sh
 ```
 
 ### Méthode manuelle

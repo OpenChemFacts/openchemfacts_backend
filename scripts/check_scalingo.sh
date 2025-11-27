@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script pour vérifier l'état du serveur Scalingo en production
-# Usage: ./check_scalingo.sh
+# Usage: ./scripts/check_scalingo.sh
 
 echo "=== Vérification du serveur Scalingo ==="
 echo ""

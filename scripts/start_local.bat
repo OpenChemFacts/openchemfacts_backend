@@ -1,6 +1,6 @@
 @echo off
 REM Script pour démarrer le serveur local (Windows)
-REM Usage: start_local.bat [port]
+REM Usage: scripts\start_local.bat [port]
 
 setlocal enabledelayedexpansion
 

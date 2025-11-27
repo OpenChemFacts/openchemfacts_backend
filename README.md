@@ -1,544 +1,148 @@
 # OpenChemFacts API
 
-API FastAPI pour accéder aux données d'écotoxicologie (ecotox) et générer des graphiques de distribution de sensibilité des espèces (SSD).
+FastAPI backend for accessing ecotoxicology (ecotox) data and generating Species Sensitivity Distribution (SSD) plots.
 
 ## Description
 
-Cette API permet d'accéder aux données d'écotoxicologie stockées dans un fichier Parquet et de générer des visualisations interactives avec Plotly :
-- Distribution de sensibilité des espèces (SSD) et calcul de HC20
-- Résultats EC10eq par taxon et espèce
-- Comparaison de plusieurs substances
+This API provides access to ecotoxicology data stored in Parquet files and generates interactive visualizations with Plotly:
+- Species Sensitivity Distribution (SSD) and HC20 calculation
+- EC10eq results by taxon and species
+- Comparison of multiple substances
 
-## Prérequis
+## Prerequisites
 
-- Python 3.11.9
+- Python 3.11+
 - Git
-- Compte Scalingo (pour le déploiement)
 
-## Installation locale
+## Installation
 
-1. Cloner le dépôt :
+1. Clone the repository:
 ```bash
-git clone <url-du-repo>
-cd backend
+git clone <repository-url>
+cd openchemfacts_backend
 ```
 
-2. Créer un environnement virtuel :
+2. Create a virtual environment:
 ```bash
 python -m venv venv
-source venv/bin/activate  # Sur Windows: venv\Scripts\activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-3. Installer les dépendances :
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Vérifier que le fichier de données est présent :
+4. Verify data files are present:
 ```bash
 ls data/results_ecotox_*.parquet
 ```
 
-## Démarrage du serveur local
+## Quick Start
 
-### Méthode 1 : Script automatique (recommandé)
+### Start the server
 
-**Sur Linux/macOS :**
+**Linux/macOS:**
 ```bash
-chmod +x start_local.sh
-./start_local.sh
+chmod +x scripts/start_local.sh
+./scripts/start_local.sh
 ```
 
-**Sur Windows :**
+**Windows:**
 ```batch
-start_local.bat
+scripts\start_local.bat
 ```
 
-Le script vérifie automatiquement :
-- ✅ La présence de Python
-- ✅ L'existence de l'environnement virtuel (le crée si nécessaire)
-- ✅ L'installation des dépendances (les installe si nécessaire)
-- ✅ La présence du fichier de données
+The server starts on `http://localhost:8000` with auto-reload enabled.
 
-Le serveur démarre sur `http://localhost:8000` avec rechargement automatique.
+### Verify the server is running
 
-### Méthode 2 : Commande manuelle
-
+**Linux/macOS:**
 ```bash
-# Activer l'environnement virtuel
-source venv/bin/activate  # Sur Windows: venv\Scripts\activate
-
-# Démarrer le serveur
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+./scripts/check_server.sh
 ```
 
-### Vérifier que le serveur est démarré
-
-**Avec le script de vérification :**
-
-**Sur Linux/macOS :**
-```bash
-chmod +x check_server.sh
-./check_server.sh
-```
-
-**Sur Windows :**
+**Windows:**
 ```batch
-check_server.bat
+scripts\check_server.bat
 ```
 
-**Manuellement :**
-- Ouvrir dans votre navigateur : `http://localhost:8000/health`
-- Vous devriez voir : `{"status": "ok"}`
-- Documentation interactive : `http://localhost:8000/docs`
+Or manually: open `http://localhost:8000/health` in your browser.
 
-### Arrêter le serveur
+### Stop the server
 
-Appuyez sur `Ctrl+C` dans le terminal où le serveur est lancé.
+Press `Ctrl+C` in the terminal where the server is running.
 
-## Endpoints disponibles
+## API Endpoints
 
-### Santé de l'API
-- `GET /health` - Vérification de l'état de l'API
+### Health
+- `GET /health` - API health check
 
-### Données
-- `GET /api/summary` - Résumé des données (nombre de lignes, colonnes, noms des colonnes)
-- `GET /api/by_column?column=<nom_colonne>` - Valeurs uniques d'une colonne
-- `GET /api/cas/list` - Liste de tous les numéros CAS disponibles avec leurs noms chimiques
+### Data
+- `GET /api/summary` - Data summary (rows, columns, column names)
+- `GET /api/by_column?column=<column_name>` - Unique values of a column
+- `GET /api/cas/list` - List of all available CAS numbers with chemical names
 
-### Graphiques
-- `GET /api/plot/ssd/{cas}` - Graphique SSD et HC20 pour un produit chimique
-  - Exemple : `GET /api/plot/ssd/335104-84-2`
-  - Retourne : JSON du graphique Plotly
+### Plots
+- `GET /api/plot/ssd/{cas}` - SSD plot and HC20 for a chemical
+  - Example: `GET /api/plot/ssd/335104-84-2`
+  - Returns: Plotly figure JSON
 
-- `GET /api/plot/ec10eq/{cas}` - Graphique des résultats EC10eq par taxon et espèce
-  - Exemple : `GET /api/plot/ec10eq/335104-84-2`
-  - Retourne : JSON du graphique Plotly
+- `GET /api/plot/ec10eq/{cas}` - EC10eq results by taxon and species
+  - Example: `GET /api/plot/ec10eq/335104-84-2`
+  - Returns: Plotly figure JSON
 
-- `POST /api/plot/ssd/comparison` - Comparaison de plusieurs courbes SSD (maximum 3)
-  - Body : `{"cas_list": ["CAS1", "CAS2", "CAS3"]}`
-  - Retourne : JSON du graphique Plotly
+- `POST /api/plot/ssd/comparison` - Compare multiple SSD curves (max 3)
+  - Body: `{"cas_list": ["CAS1", "CAS2", "CAS3"]}`
+  - Returns: Plotly figure JSON
 
-## Documentation interactive
+## Interactive Documentation
 
-Une fois l'API lancée, accédez à :
-- Documentation Swagger : `http://localhost:8000/docs`
-- Documentation ReDoc : `http://localhost:8000/redoc`
+Once the API is running, access:
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
 
-## Déploiement sur Scalingo
-
-### Vue d'ensemble
-
-Le déploiement sur Scalingo se fait via Git. Quand vous poussez votre code sur le remote `scalingo`, Scalingo :
-1. Détecte automatiquement le `Procfile` pour démarrer l'application
-2. Installe les dépendances depuis `requirements.txt`
-3. Démarre l'application avec uvicorn
-
-**Important :** Le serveur distant démarre automatiquement après chaque `git push scalingo main`. Vous n'avez pas besoin de le démarrer manuellement.
-
-### 1. Préparation
-
-Assurez-vous que le fichier parquet est bien dans le dépôt Git :
-```bash
-git add data/results_ecotox_*.parquet
-git commit -m "Add data file"
-```
-
-### 2. Installation du CLI Scalingo
-
-```bash
-# Sur macOS
-brew tap scalingo/scalingo
-brew install scalingo
-
-# Sur Linux
-curl -O https://cli.scalingo.com
-chmod +x scalingo_*_linux_amd64
-sudo mv scalingo_*_linux_amd64 /usr/local/bin/scalingo
-
-# Sur Windows
-# Télécharger depuis https://cli.scalingo.com
-```
-
-### 3. Connexion à Scalingo
-
-```bash
-scalingo login
-```
-
-### 4. Création du projet
-
-```bash
-# Depuis le répertoire du projet
-scalingo create openchemfacts-api
-```
-
-### 5. Liaison du dépôt Git
-
-```bash
-scalingo link openchemfacts-api
-```
-
-Cette commande ajoute le remote `scalingo` à votre dépôt Git.
-
-### 6. Configuration des variables d'environnement (optionnel)
-
-```bash
-scalingo env-set ALLOWED_ORIGINS=https://openchemfacts.com
-```
-
-Par défaut, l'API est configurée pour accepter les requêtes depuis `https://openchemfacts.com`.
-
-### 7. Déploiement
-
-**Premier déploiement :**
-```bash
-git push scalingo main
-```
-
-**Déploiements suivants :**
-```bash
-# Après avoir fait des modifications et commité
-git push scalingo main
-```
-
-Scalingo détectera automatiquement :
-- Le `Procfile` pour démarrer l'application
-- Le `.python-version` pour la version Python
-- Le `requirements.txt` pour installer les dépendances
-
-**Le serveur démarre automatiquement** après le déploiement. Vous n'avez rien à faire de plus.
-
-### 8. Vérification du déploiement et monitoring
-
-#### Vérifier l'état du serveur en production
-
-**Méthode rapide avec script (recommandée) :**
-
-**Sur Windows :**
-```batch
-check_scalingo.bat
-```
-
-**Sur Linux/macOS :**
-```bash
-chmod +x check_scalingo.sh
-./check_scalingo.sh
-```
-
-Ce script vérifie automatiquement :
-- Le statut de l'application
-- Le health check endpoint
-- Les erreurs récentes dans les logs
-- Les métriques de ressources
-
-**Méthode manuelle :**
-
-**1. Vérifier le statut de l'application :**
-```bash
-scalingo status
-```
-Affiche l'état actuel (running, stopped, crashed, etc.) et les informations sur les conteneurs.
-
-**2. Tester l'endpoint health check :**
-```bash
-# Récupérer l'URL de l'application
-scalingo open
-
-# Tester le health check manuellement
-curl https://votre-app.scalingo.io/health
-```
-
-Le health check retourne :
-```json
-{
-  "status": "ok",
-  "timestamp": "2025-01-XX...",
-  "data": {
-    "status": "ok",
-    "rows": 12345
-  },
-  "version": "0.1.0"
-}
-```
-
-**3. Voir les logs en temps réel :**
-```bash
-# Logs en temps réel (streaming)
-scalingo logs
-
-# Dernières 100 lignes
-scalingo logs --lines 100
-
-# Filtrer les erreurs
-scalingo logs --filter "@level:error"
-
-# Logs d'un déploiement spécifique
-scalingo logs --deployment <deployment-id>
-```
-
-**4. Vérifier les métriques et ressources :**
-```bash
-# Voir l'utilisation des ressources (CPU, mémoire)
-scalingo stats
-
-# Voir les déploiements récents
-scalingo deployments
-```
-
-**5. Vérifier les variables d'environnement :**
-```bash
-scalingo env
-```
-
-#### Diagnostic en cas de problème (site down)
-
-**Étape 1 : Vérifier l'état de l'application**
-```bash
-scalingo status
-```
-
-**Étape 2 : Consulter les logs récents pour identifier l'erreur**
-```bash
-# Voir les 200 dernières lignes
-scalingo logs --lines 200
-
-# Filtrer uniquement les erreurs
-scalingo logs --lines 200 --filter "@level:error OR error OR exception OR traceback"
-```
-
-**Étape 3 : Vérifier si l'application répond**
-```bash
-# Tester le health check
-curl -v https://votre-app.scalingo.io/health
-
-# Si pas de réponse, vérifier les logs de build
-scalingo logs --type build
-```
-
-**Étape 4 : Redémarrer l'application si nécessaire**
-```bash
-# Redémarrer l'application
-scalingo restart
-
-# Vérifier qu'elle redémarre correctement
-scalingo logs --lines 50
-```
-
-**Étape 5 : Vérifier les déploiements récents**
-```bash
-# Lister les déploiements
-scalingo deployments
-
-# Voir les logs d'un déploiement spécifique
-scalingo logs --deployment <deployment-id>
-```
-
-#### Configuration du redémarrage automatique
-
-Scalingo redémarre automatiquement l'application si :
-- Le processus crash (exit code != 0)
-- Le conteneur s'arrête de manière inattendue
-- Un nouveau déploiement est effectué
-
-**Pour améliorer la résilience, vous pouvez configurer un health check HTTP :**
-
-1. Dans le dashboard Scalingo, allez dans **Settings** > **Healthcheck**
-2. Configurez l'URL : `/health`
-3. Scalingo vérifiera automatiquement que l'application répond et la redémarrera si nécessaire
-
-**Redémarrer manuellement l'application :**
-```bash
-scalingo restart
-```
-
-### Scripts de déploiement automatique
-
-**Sur Linux/macOS :**
-```bash
-chmod +x deploy_scalingo.sh
-./deploy_scalingo.sh
-```
-
-**Sur Windows :**
-```batch
-deploy_scalingo.bat
-```
-
-Ces scripts configurent automatiquement :
-- La connexion à Scalingo
-- La création du projet (si nécessaire)
-- La liaison du dépôt Git
-- Les variables d'environnement
-
-### 9. Configuration d'un domaine personnalisé (optionnel)
-
-```bash
-scalingo domains-add api.openchemfacts.com
-```
-
-## Structure du projet
+## Project Structure
 
 ```
-backend/
+openchemfacts_backend/
 ├── app/
-│   ├── __init__.py
-│   ├── main.py          # Application FastAPI principale
-│   ├── api.py           # Routes API
-│   ├── data_loader.py   # Chargement des données
-│   └── models.py        # Modèles Pydantic
+│   ├── main.py          # FastAPI application
+│   ├── api.py           # API routes
+│   ├── data_loader.py   # Data loading
+│   └── models.py        # Pydantic models
 ├── data/
-│   ├── plotting_functions.py           # Fonctions de visualisation
-│   └── results_ecotox_*.parquet       # Données d'écotoxicologie
-├── Procfile             # Configuration Scalingo
-├── .python-version      # Version Python (majeure uniquement)
-├── requirements.txt     # Dépendances Python
-├── .gitignore          # Fichiers ignorés par Git
-└── README.md           # Ce fichier
+│   └── results_ecotox_*.parquet  # Ecotoxicology data
+├── scripts/             # Utility scripts
+├── tests/               # Test suite
+├── Documentation/       # Detailed documentation
+├── Procfile             # Scalingo configuration
+├── requirements.txt     # Python dependencies
+└── README.md           # This file
 ```
 
-## Variables d'environnement
+## Deployment
 
-- `ALLOWED_ORIGINS` : Origines autorisées pour CORS (séparées par des virgules)
-  - Par défaut : `https://openchemfacts.com,https://openchemfacts.lovable.app`
-  - Exemple : `https://openchemfacts.com,https://openchemfacts.lovable.app,https://www.openchemfacts.com`
+The application can be deployed on Scalingo. For detailed deployment instructions, see `Documentation/06_Deploiement_Scalingo.md`.
 
-## Fichiers de configuration Scalingo
-
-- `Procfile` : Définit la commande pour démarrer l'application
-  ```
-  web: uvicorn app.main:app --host 0.0.0.0 --port 8080
-  ```
-
-- `.python-version` : Version Python majeure à utiliser (Scalingo utilisera automatiquement la dernière version patch)
-  ```
-  3.11
-  ```
-  
-  Note : Ne spécifiez que la version majeure (ex: 3.11) pour recevoir automatiquement les mises à jour de sécurité.
-
-## Dépannage
-
-### Le serveur local ne démarre pas
-
-1. **Vérifier que Python est installé :**
-   ```bash
-   python --version  # Doit être 3.11 ou supérieur
-   ```
-
-2. **Vérifier que l'environnement virtuel est activé :**
-   ```bash
-   which python  # Doit pointer vers venv/bin/python
-   ```
-
-3. **Réinstaller les dépendances :**
-   ```bash
-   pip install -r requirements.txt --force-reinstall
-   ```
-
-4. **Vérifier que le port 8000 n'est pas déjà utilisé :**
-   ```bash
-   # Sur Linux/macOS
-   lsof -i :8000
-   
-   # Sur Windows
-   netstat -ano | findstr :8000
-   ```
-   Si le port est occupé, utilisez un autre port :
-   ```bash
-   uvicorn app.main:app --port 8001 --reload
-   ```
-
-5. **Vérifier que le fichier de données existe :**
-   ```bash
-   ls data/results_ecotox_*.parquet
-   ```
-
-### L'application ne démarre pas sur Scalingo
-
-1. **Vérifier les logs :**
-   ```bash
-   scalingo logs --lines 100
-   scalingo logs --type build  # Logs de build
-   ```
-
-2. **Vérifier l'état de l'application :**
-   ```bash
-   scalingo status
-   ```
-
-3. **Vérifier que le fichier parquet est bien dans Git :**
-   ```bash
-   git ls-files data/results_ecotox_*.parquet
-   ```
-
-4. **Vérifier que toutes les dépendances sont dans `requirements.txt`**
-
-5. **Vérifier la configuration du Procfile :**
-   ```bash
-   cat Procfile
-   ```
-   Doit contenir : `web: uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-
-6. **Vérifier les variables d'environnement :**
-   ```bash
-   scalingo env
-   ```
-
-7. **Tester le health check :**
-   ```bash
-   curl https://votre-app.scalingo.io/health
-   ```
-
-### Le site est down en production
-
-1. **Vérifier l'état immédiatement :**
-   ```bash
-   scalingo status
-   ```
-
-2. **Consulter les logs d'erreur :**
-   ```bash
-   scalingo logs --lines 200 --filter "error OR exception OR traceback"
-   ```
-
-3. **Vérifier les métriques (CPU, mémoire) :**
-   ```bash
-   scalingo stats
-   ```
-   Si la mémoire est saturée, l'application peut crasher.
-
-4. **Redémarrer l'application :**
-   ```bash
-   scalingo restart
-   ```
-
-5. **Vérifier les déploiements récents :**
-   ```bash
-   scalingo deployments
-   ```
-   Un déploiement récent peut avoir causé le problème.
-
-6. **Configurer un health check HTTP dans Scalingo** (recommandé) :
-   - Dashboard Scalingo > Settings > Healthcheck
-   - URL : `/health`
-   - Cela permettra à Scalingo de redémarrer automatiquement l'application si elle ne répond plus
-
-### Erreur CORS
-
-Vérifier que la variable d'environnement `ALLOWED_ORIGINS` est correctement configurée :
+Quick deployment:
 ```bash
-scalingo env
+git push scalingo main
 ```
 
-### Le fichier parquet n'est pas trouvé
+## Environment Variables
 
-Assurez-vous que le fichier est bien commité dans Git :
-```bash
-git ls-files data/results_ecotox_*.parquet
-```
+- `ALLOWED_ORIGINS`: Allowed CORS origins (comma-separated)
+  - Default: `https://openchemfacts.com,https://openchemfacts.lovable.app`
+
+## Documentation
+
+For detailed documentation, see the `Documentation/` folder:
+- Installation and configuration: `Documentation/03_Installation_Configuration.md`
+- API usage: `Documentation/04_Utilisation_API.md`
+- Deployment: `Documentation/06_Deploiement_Scalingo.md`
+- Development: `Documentation/05_Developpement_Local.md`
 
 ## Support
 
-Pour toute question ou problème, consulter la documentation Scalingo : https://doc.scalingo.com
-
+For questions or issues, consult the Scalingo documentation: https://doc.scalingo.com

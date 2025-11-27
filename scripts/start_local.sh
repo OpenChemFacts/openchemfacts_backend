@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script pour démarrer le serveur local
-# Usage: ./start_local.sh [port]
+# Usage: ./scripts/start_local.sh [port]
 
 set -e
 

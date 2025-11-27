@@ -1,6 +1,6 @@
 @echo off
 REM Script pour vérifier si le serveur local est démarré (Windows)
-REM Usage: check_server.bat [port]
+REM Usage: scripts\check_server.bat [port]
 
 setlocal enabledelayedexpansion
 
@@ -48,7 +48,7 @@ if "%HTTP_CODE%"=="200" (
     echo.
     echo Le serveur n'est probablement pas démarré.
     echo Pour démarrer le serveur:
-    echo    start_local.bat %PORT%
+    echo    scripts\start_local.bat %PORT%
     echo    ou
     echo    uvicorn app.main:app --host 0.0.0.0 --port %PORT% --reload
     pause
