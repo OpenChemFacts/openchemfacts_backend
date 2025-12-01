@@ -16,8 +16,9 @@ from fastapi import status
 logger = logging.getLogger(__name__)
 
 # Configuration from environment variables
+# Par défaut, activé pour la sécurité de base
 ENABLE_SECURITY_HEADERS = os.getenv("ENABLE_SECURITY_HEADERS", "true").lower() == "true"
-MAX_REQUEST_SIZE = int(os.getenv("MAX_REQUEST_SIZE", "1048576"))  # Default: 1MB
+MAX_REQUEST_SIZE = int(os.getenv("MAX_REQUEST_SIZE", "2097152"))  # Default: 2MB (plus permissif en développement)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):

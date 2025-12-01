@@ -26,7 +26,18 @@ fi
 
 # Activer l'environnement virtuel
 echo "Activation de l'environnement virtuel..."
-source venv/bin/activate
+# Détecter le chemin d'activation selon l'OS (Windows vs Unix)
+if [ -f "venv/Scripts/activate" ]; then
+    # Windows (Git Bash ou WSL)
+    source venv/Scripts/activate
+elif [ -f "venv/bin/activate" ]; then
+    # Unix/Linux/macOS
+    source venv/bin/activate
+else
+    echo "❌ Impossible de trouver le script d'activation de l'environnement virtuel."
+    echo "   Vérifiez que venv/Scripts/activate ou venv/bin/activate existe."
+    exit 1
+fi
 
 # Vérifier que pytest est installé
 if ! python -c "import pytest" 2>/dev/null; then

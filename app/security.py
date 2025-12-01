@@ -12,7 +12,9 @@ from slowapi.errors import RateLimitExceeded
 from fastapi import Request
 
 # Rate limiting configuration from environment variables
-RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
+# Par défaut, désactivé en développement pour faciliter les tests
+# Activez-le en production via la variable d'environnement RATE_LIMIT_ENABLED=true
+RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "false").lower() == "true"
 RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
 RATE_LIMIT_PLOT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PLOT_PER_MINUTE", "10"))
 RATE_LIMIT_HEALTH_PER_MINUTE = int(os.getenv("RATE_LIMIT_HEALTH_PER_MINUTE", "120"))

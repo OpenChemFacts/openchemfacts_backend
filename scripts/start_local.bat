@@ -10,6 +10,15 @@ if "%PORT%"=="" set PORT=8000
 echo === Démarrage du serveur local ===
 echo.
 
+REM Vérifier si le port est déjà utilisé
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr LISTENING ^| findstr ":%PORT%"') do (
+    echo ❌ Le port %PORT% est déjà utilisé par le PID %%a.
+    echo    Fermez le processus (par exemple via le Gestionnaire des tâches)
+    echo    ou relancez le script avec un autre port, par exemple :
+    echo    scripts\start_local.bat 8001
+    goto :EOF
+)
+
 REM Vérifier que Python est installé
 python --version >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (

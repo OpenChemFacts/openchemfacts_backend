@@ -56,6 +56,20 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     )
     return response
 
+# Add global exception handler for debugging
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Global exception handler to catch any unhandled exceptions.
+    """
+    logger.error(f"Unhandled exception: {type(exc).__name__}: {str(exc)}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": f"Internal server error: {str(exc)}" if os.getenv("ENVIRONMENT", "development").lower() != "production" else "Internal server error"
+        }
+    )
+
 # Log au démarrage pour le débogage
 logger.info("Starting OpenChemFacts API")
 logger.info(f"Python version: {sys.version}")

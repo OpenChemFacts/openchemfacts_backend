@@ -473,22 +473,22 @@ def resolve_cas_from_identifier(identifier: str, dataframe: pd.DataFrame = None)
 @apply_rate_limit("60/minute")
 def get_summary(request: Request):
     """
-    Get a summary of available results in OpenChemFacts database.
+    Number of chemicals and endpoints available on the platform.
     
     Returns a dictionary containing:\n
             - chemicals: Total number of CAS with a calculated effect factor (EF)
             - EF_openchemfacts(calculated): Total number of EF calculated by OpenChemFacts
-            - EF_usetox(official): Total number of EF officially provided by USETOX
-            - EF_ef3.1(official): Total number of EF officially provided by EF 3.1
+            - EF_usetox(official): Total number of EF officially provided by USEtox
+            - EF_ef(official): Total number of EF officially provided by European Footprint method (JRC team)
     """
     try:
         df = load_and_validate_benchmark_data(["cas_number", "Source"])
         
         return {
             "chemicals": int(df["cas_number"].nunique()),
-            "EF_openchemfacts(calculated)": int((df["Source"] == "OpenChemFacts 0.1").sum()),
-            "EF_usetox(official)": int((df["Source"] == "USETOX 2.14").sum()),
-            "EF_ef3.1(official)": int((df["Source"] == "EF 3.1").sum()),
+            "EF_openchemfacts(calculated)": int((df["Source"] == "OpenChemFacts").sum()),
+            "EF_usetox(official)": int((df["Source"] == "USEtox").sum()),
+            "EF_ef(official)": int((df["Source"] == "EF").sum()),
         }
     except HTTPException:
         raise
@@ -508,9 +508,10 @@ def get_metadata(request: Request):
     
     Returns:
         JSON object containing metadata grouped by category:\n
-        - HC20: Contains unit and definition
-        - effect_factor: Contains unit, summary, and details
-        - 
+        - HC20: Unit + Definition + Why
+        - EC10eq: Unit + Definition + Why
+        - SSD: Definition + Summary + Why
+        - EF: Unit + Formula + Summary + Details
     """
     return {
         "HC20": {
@@ -554,12 +555,13 @@ def get_cas_data(cas: str, request: Request):
         - Kingdom: Classyfire classification kingdom
         - Superclass: Classyfire classification superclass
         - Class: Classyfire classification class
-        - EffectFactor(s): List of dictionaries with Source and EF
+        - EffectFactor(s): List of dictionaries with Source, Version and EF
     """
     # Validate CAS number input
     cas = validate_cas_number(cas)
     try:
-        df_benchmark = load_and_validate_benchmark_data(["cas_number", "name", "INCHIKEY", "Kingdom", "Superclass", "Class", "Source", "EF"])
+        # Load benchmark data - Version is required
+        df_benchmark = load_and_validate_benchmark_data(["cas_number", "name", "INCHIKEY", "Kingdom", "Superclass", "Class", "Source", "Version", "EF"])
         substance_data = df_benchmark[df_benchmark["cas_number"] == cas]
         
         if substance_data.empty:
@@ -584,9 +586,10 @@ def get_cas_data(cas: str, request: Request):
             try:
                 effect_factors.append({
                     "Source": str(row["Source"]),
+                    "Version": None if pd.isna(row["Version"]) else str(row["Version"]),
                     "EF": None if pd.isna(row["EF"]) else float(row["EF"])
                 })
-            except (ValueError, TypeError) as e:
+            except (ValueError, TypeError, KeyError) as e:
                 raise HTTPException(
                     status_code=500,
                     detail=f"Error processing effect factor data for CAS '{cas}': {str(e)}"
