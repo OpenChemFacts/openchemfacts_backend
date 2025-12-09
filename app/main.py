@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="openchemfacts_API_0.1",
     version="0.1.0",
-    description="OpenChemFacts is an open-data platform dedicated to the assessment of chemicals’ ecotoxicity. <br>API for accessing ecotoxicology data and generating scientific visualizations"
+    description="OpenChemFacts is an open-data platform dedicated to the assessment of chemicals' ecotoxicity. <br>API for accessing ecotoxicology data and generating scientific visualizations<br><br><b>License:</b> This OpenChemFacts database is made available under the Open Database License: http://opendatacommons.org/licenses/odbl/1.0/. Any rights in individual contents of the database are licensed under the Database Contents License: http://opendatacommons.org/licenses/dbcl/1.0/"
 )
 
 # Initialize rate limiter
@@ -133,6 +133,32 @@ app.add_middleware(
 app.include_router(api.router, prefix="/api", tags=["api"])
 
 
+@app.get("/api/license")
+@rate_limit_health()
+def get_license_info(request: Request):
+    """
+    Get license information for the OpenChemFacts database.
+    
+    Returns:
+        Dictionary containing:
+        - database_name: Name of the database
+        - odbl_url: URL to Open Database License (ODbL) v1.0
+        - dbcl_url: URL to Database Contents License (DbCL) v1.0
+        - notice: Standard license notice text
+        - local_files: Information about local license files in the project
+    """
+    from .api import get_license_notice
+    
+    license_info = get_license_notice()
+    license_info["local_files"] = {
+        "odbl": "LICENSE_ODBL.txt",
+        "dbcl": "LICENSE_DBCL.txt",
+        "data_notice": "data/LICENSE_NOTICE.txt"
+    }
+    
+    return license_info
+
+
 @app.get("/")
 @rate_limit_health()
 def root(request: Request):
@@ -158,7 +184,8 @@ def root(request: Request):
             "api_search": "/api/search?query={query}&limit={limit}",
             "api_plot_ssd": "/api/plot/ssd/{identifier}",
             "api_plot_ec10eq": "/api/plot/ec10eq/{identifier}",
-            "api_plot_comparison": "/api/plot/ssd/comparison"
+            "api_plot_comparison": "/api/plot/ssd/comparison",
+            "api_license": "/api/license"
         }
     }
 

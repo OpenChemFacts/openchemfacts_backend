@@ -69,3 +69,13 @@ Deployed on Scalingo. The application automatically configures CORS based on the
 - **Pandas/Polars**: Data processing
 - **Plotly**: Scientific visualizations
 - **Pydantic**: Data validation
+
+## License
+
+This OpenChemFacts database is made available under the Open Database License: http://opendatacommons.org/licenses/odbl/1.0/. Any rights in individual contents of the database are licensed under the Database Contents License: http://opendatacommons.org/licenses/dbcl/1.0/
+
+The complete legal texts of both licenses are available in the project root:
+- `LICENSE_ODBL.txt` - Open Database License (ODbL) v1.0
+- `LICENSE_DBCL.txt` - Database Contents License (DbCL) v1.0
+
+For more information about your rights and obligations under these licenses, please refer to the full license texts or visit [Open Data Commons](https://opendatacommons.org/licenses/).

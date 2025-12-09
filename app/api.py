@@ -288,6 +288,25 @@ def load_and_validate_ssd_data(required_columns: List[str] = None) -> pd.DataFra
         raise handle_data_errors(e, "SSD data")
 
 
+def get_license_notice() -> dict:
+    """
+    Get license notice information for API responses.
+    
+    Returns:
+        Dictionary containing license information including:
+        - database_name: Name of the database
+        - odbl_url: URL to ODbL license
+        - dbcl_url: URL to Database Contents License
+        - notice: Standard license notice text
+    """
+    return {
+        "database_name": "OpenChemFacts Database",
+        "odbl_url": "http://opendatacommons.org/licenses/odbl/1.0/",
+        "dbcl_url": "http://opendatacommons.org/licenses/dbcl/1.0/",
+        "notice": "This OpenChemFacts database is made available under the Open Database License: http://opendatacommons.org/licenses/odbl/1.0/. Any rights in individual contents of the database are licensed under the Database Contents License: http://opendatacommons.org/licenses/dbcl/1.0/"
+    }
+
+
 class ComparisonRequest(BaseModel):
     """
     Request model for SSD comparison endpoint.
@@ -484,12 +503,14 @@ def get_summary(request: Request):
     try:
         df = load_and_validate_benchmark_data(["cas_number", "Source"])
         
-        return {
+        result = {
             "chemicals": int(df["cas_number"].nunique()),
             "EF_openchemfacts(calculated)": int((df["Source"] == "OpenChemFacts").sum()),
             "EF_usetox(official)": int((df["Source"] == "USEtox").sum()),
             "EF_ef(official)": int((df["Source"] == "EF").sum()),
+            "license": get_license_notice(),
         }
+        return result
     except HTTPException:
         raise
     except Exception as e:
@@ -745,11 +766,13 @@ def get_ec10eq_plot(cas: str, request: Request):
         get_ec10eq_data = _get_ec10eq_data_function()
         
         # Call data processing function with API configuration
-        return get_ec10eq_data(
+        ec10eq_data = get_ec10eq_data(
             cas_number=cas,
             data_path=str(DATA_PATH_ec10eq),
             output_format="detailed"
         )
+        
+        return ec10eq_data
     except HTTPException:
         raise
     except Exception as e:
@@ -813,10 +836,12 @@ def get_ssd_comparison(request_body: ComparisonRequest, request: Request):
         get_ssd_comparison_data = _get_ssd_comparison_data_function()
         
         # Call data processing function
-        return get_ssd_comparison_data(
+        comparison_data = get_ssd_comparison_data(
             dataframe=df,
             cas_list=resolved_cas_list
         )
+        
+        return comparison_data
     except HTTPException:
         raise
     except Exception as e:
