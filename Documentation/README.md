@@ -8,7 +8,7 @@ Several key improvements are planned in the coming months — for example, refin
 A first version of the platform was released in November 2025 to start identifying contributors, early users, and potential funding partners.
 {% endhint %}
 
-## What is OpenChemFacts?
+## What is OpenChemFacts ?
 
 OpenChemFacts is an open-data platform dedicated to the assessment of chemicals’ ecotoxicity.\
 It provides transparent, reproducible and scientifically robust indicators derived from internationally recognized models.
