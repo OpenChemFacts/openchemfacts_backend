@@ -53,6 +53,4 @@ htmlcov/
 .ipynb_checkpoints
 
 # Local documentation (personal use only)
-Documentation/
-data_pipeline/visualization/Documentation/
-
+Documentation_local/

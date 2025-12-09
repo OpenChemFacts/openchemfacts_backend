@@ -1,135 +1,71 @@
-# OpenChemFacts API
+# OpenChemFacts Backend
 
-FastAPI backend for accessing ecotoxicology (ecotox) data and generating Species Sensitivity Distribution (SSD) plots.
+FastAPI backend for the OpenChemFacts platform, providing access to ecotoxicology data and generating scientific visualizations.
 
-## Description
+## Role
 
-This API provides access to ecotoxicology data stored in Parquet files and generates interactive visualizations with Plotly:
-- Species Sensitivity Distribution (SSD) and HC20 calculation
-- EC10eq results by taxon and species
-- Comparison of multiple substances
+This backend serves as the data and computation layer for the OpenChemFacts platform. It provides:
 
-## Prerequisites
+- **Data Access**: RESTful API to query ecotoxicology datasets stored in Parquet format
+- **Scientific Visualizations**: Generation of Species Sensitivity Distribution (SSD) plots and EC10eq analysis
+- **Data Processing**: Statistical calculations including HC20 (Hazard Concentration for 20% of species) and multi-substance comparisons
 
-- Python 3.11+
-- Git
+## Technical Architecture
 
-## Installation
+### Core Components
 
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd openchemfacts_backend
+```
+app/
+├── main.py          # FastAPI application setup, CORS, security middleware
+├── api.py           # API route definitions and request handling
+├── data_loader.py   # Data loading from Parquet files with caching
+├── models.py        # Pydantic models for request/response validation
+├── security.py      # Rate limiting and security configurations
+└── middleware.py    # Security headers, request size limits, logging
 ```
 
-2. Create a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+### Data Layer
 
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+- **Storage**: Ecotoxicology data stored as Parquet files in `data/`
+- **Processing**: Pandas/Polars for data manipulation
+- **Caching**: LRU cache for efficient data loading and reuse
 
-4. Verify data files are present:
-```bash
-ls data/results_ecotox_*.parquet
-```
+### API Layer
 
-## Quick Start
+- **Framework**: FastAPI with automatic OpenAPI documentation
+- **Security**: CORS, rate limiting, security headers, request size limits
+- **Endpoints**: 
+  - Data queries (`/api/summary`, `/api/search`, `/api/cas/list`)
+  - Visualization data (`/api/plot/ssd/{cas}`, `/api/plot/ec10eq/{cas}`)
+  - Comparisons (`/api/plot/ssd/comparison`)
 
-### Start the server
+### Visualization
 
-**Linux/macOS:**
-```bash
-chmod +x scripts/start_local.sh
-./scripts/start_local.sh
-```
-
-**Windows:**
-```batch
-scripts\start_local.bat
-```
-
-The server starts on `http://localhost:8000` with auto-reload enabled.
-
-### Verify the server is running
-
-**Linux/macOS:**
-```bash
-./scripts/check_server.sh
-```
-
-**Windows:**
-```batch
-scripts\check_server.bat
-```
-
-Or manually: open `http://localhost:8000/health` in your browser.
-
-### Stop the server
-
-Press `Ctrl+C` in the terminal where the server is running.
-
-## API Endpoints
-
-### Health
-- `GET /health` - API health check
-
-### Data
-- `GET /api/summary` - Data summary (rows, columns, column names)
-- `GET /api/by_column?column=<column_name>` - Unique values of a column
-- `GET /api/cas/list` - List of all available CAS numbers with chemical names
-
-### Plots
-- `GET /api/plot/ssd/{cas}` - SSD plot and HC20 for a chemical
-  - Example: `GET /api/plot/ssd/335104-84-2`
-  - Returns: Plotly figure JSON
-
-- `GET /api/plot/ec10eq/{cas}` - EC10eq results by taxon and species
-  - Example: `GET /api/plot/ec10eq/335104-84-2`
-  - Returns: Plotly figure JSON
-
-- `POST /api/plot/ssd/comparison` - Compare multiple SSD curves (max 3)
-  - Body: `{"cas_list": ["CAS1", "CAS2", "CAS3"]}`
-  - Returns: Plotly figure JSON
-
-## Interactive Documentation
-
-Once the API is running, access:
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+- **Library**: Plotly for interactive scientific plots
+- **Output**: JSON-serialized Plotly figures consumed by frontend
+- **Types**: SSD curves, EC10eq distributions, multi-substance comparisons
 
 ## Project Structure
 
 ```
 openchemfacts_backend/
-├── app/
-│   ├── main.py          # FastAPI application
-│   ├── api.py           # API routes
-│   ├── data_loader.py   # Data loading
-│   └── models.py        # Pydantic models
-├── data/
-│   └── results_ecotox_*.parquet  # Ecotoxicology data
-├── scripts/             # Utility scripts
-├── tests/               # Test suite
-├── Procfile             # Scalingo configuration
-├── requirements.txt     # Python dependencies
-└── README.md           # This file
+├── app/                    # Application code
+├── data/                   # Parquet data files
+│   └── graph/             # Visualization logic modules
+├── scripts/               # Deployment and utility scripts
+├── tests/                 # Test suite
+├── requirements.txt       # Python dependencies
+└── Procfile              # Scalingo deployment configuration
 ```
 
 ## Deployment
 
-The application can be deployed on Scalingo. 
+Deployed on Scalingo. The application automatically configures CORS based on the `ALLOWED_ORIGINS` environment variable.
 
-Quick deployment:
-```bash
-git push scalingo main
-```
+## Technology Stack
 
-## Environment Variables
-
-- `ALLOWED_ORIGINS`: Allowed CORS origins (comma-separated)
-  - Default: `https://openchemfacts.com,https://openchemfacts.lovable.app`
+- **Python 3.11+**
+- **FastAPI**: Web framework
+- **Pandas/Polars**: Data processing
+- **Plotly**: Scientific visualizations
+- **Pydantic**: Data validation
