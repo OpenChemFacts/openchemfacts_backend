@@ -1,36 +1,45 @@
-# 💡 Introduction
+# OpenChemFacts Backend API
 
-{% hint style="warning" %}
-The platform and its models are still under development.
+Backend API for the OpenChemFacts platform - an open-data platform dedicated to the assessment of chemicals' ecotoxicity.
 
-Several key improvements are planned in the coming months — for example, refining the data pipeline to distinguish organic from inorganic assessments, integrating additional databases, add new features, etc.
+## Architecture
 
-A first version of the platform was released in November 2025 to start identifying contributors, early users, and potential funding partners.
-{% endhint %}
+The project follows a modular FastAPI architecture:
 
-## What is OpenChemFacts ?
+```
+openchemfacts_backend/
+├── app/                    # Main application code
+│   ├── main.py            # FastAPI application setup and configuration
+│   ├── api.py             # API routes and endpoints
+│   ├── config.py          # Configuration settings (CORS, API settings)
+│   ├── data_loader.py     # Data loading utilities
+│   ├── models.py          # Pydantic models for request/response validation
+│   ├── security.py        # Security and rate limiting
+│   └── middleware.py      # Custom middleware (security headers, request size limits)
+├── data/                   # Data files and processing scripts
+│   ├── graph/             # Data visualization and processing modules
+│   │   ├── EC10 details/  # EC10eq data processing
+│   │   ├── SSD/           # Species Sensitivity Distribution processing
+│   │   └── SSD comparison/# Comparison data processing
+│   └── *.parquet          # Data files (ecotoxicology datasets)
+├── Documentation/         # Gitbook documentation
+├── scripts/               # Utility scripts (deployment, testing, local development)
+├── tests/                 # Test suite
+└── requirements.txt       # Python dependencies
+```
 
-OpenChemFacts is an open-data platform dedicated to the assessment of chemicals’ ecotoxicity.\
-It provides transparent, reproducible and scientifically robust indicators derived from internationally recognized models.
+### Key Components
 
-The platform focuses on two core pillars:
+- **FastAPI Application** (`app/main.py`): Main application instance with CORS, security middleware, and route registration
+- **API Routes** (`app/api.py`): RESTful endpoints for data access (summary, search, CAS list, SSD data, EC10eq data, comparisons)
+- **Data Layer** (`app/data_loader.py`): Handles loading and caching of parquet data files
+- **Security** (`app/security.py`, `app/middleware.py`): Rate limiting, security headers, and request validation
+- **Configuration** (`app/config.py`): Centralized configuration management
 
-1. Data collection and harmonization from major regulatory and scientific sources\
-   (e.g. US EPA ECOTOX, EU REACH, OECD dossiers, national inventories).
-2. Ecotoxicity characterization using internationally recognized models\
-   (e.g. USEtox, EF 3.1, and other consensus methods developed under UNEP/SETAC initiatives).
+## License
 
-## Why OpenChemFacts ?
+This OpenChemFacts database is made available under the **Open Database License**: http://opendatacommons.org/licenses/odbl/1.0/
 
-Chemicals are essential for modern societies, yet their global production is expected to double by 2030.&#x20;
+Any rights in individual contents of the database are licensed under the **Database Contents License**: http://opendatacommons.org/licenses/dbcl/1.0/
 
-A large share of these substances presents hazardous properties that may affect ecosystems and human health.
-
-Despite this, a critical information gap persists, largely due to:
-
-* Data scarcity: ecotoxicological data remains fragmented, heterogeneous or inaccessible.
-* Methodological gaps: many chemicals lack harmonized characterization factors enabling comparative assessment.
-
-To bridge these gaps, consensus scientific models are indispensable for quantifying potential ecotoxicological impacts across the life cycle of chemicals, products and technologies.
-
-OpenChemFacts integrates these models and consolidates experimental data to produce transparent and robust ecotoxicity characterization factors for chemicals widely used in industry, research, and policy assessment.
+See `LICENSE_ODBL.txt` and `LICENSE_DBCL.txt` for full license text.
