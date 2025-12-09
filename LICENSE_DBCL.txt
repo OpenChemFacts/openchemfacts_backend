@@ -6,7 +6,7 @@ The Licensor and You agree as follows:
 
 The definitions of the Open Database License (ODbL) 1.0 are incorporated by reference into the Database Contents License.
 
-2.0 Rights granted and Conditions of Use<
+2.0 Rights granted and Conditions of Use
 
 2.1 Rights granted. The Licensor grants to You a worldwide,
 royalty-free, non-exclusive, perpetual, irrevocable copyright license to
